@@ -1,0 +1,21 @@
+{
+  "name": "wasapi-capture-native",
+  "version": "1.0.0",
+  "description": "Native WASAPI loopback capture for Windows",
+  "main": "index.js",
+  "scripts": {
+    "install": "node-gyp rebuild",
+    "rebuild": "node-gyp rebuild"
+  },
+  "dependencies": {
+    "node-addon-api": "^7.0.0"
+  },
+  "devDependencies": {
+    "node-gyp": "^10.0.0"
+  },
+  "gypfile": true
+}
+
+
+
+

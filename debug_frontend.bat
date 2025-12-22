@@ -1,0 +1,6 @@
+@echo off
+echo Starting Frontend in Debug Mode...
+cd src\frontend
+echo Running npm run dev...
+npm run dev
+pause

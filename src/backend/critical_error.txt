@@ -1,0 +1,1 @@
+Error: OSError: [WinError 10048] Normalmente só é permitido uma utilização de cada endereço de socket (protocolo/endereço de rede/porta)

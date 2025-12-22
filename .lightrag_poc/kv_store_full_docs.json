@@ -1,0 +1,9 @@
+{
+  "doc-40e045710930ad5691a03d8af906f7b4": {
+    "content": "A Ultra IA é assistente pessoal local que revoluciona a gestão.\n    O CTO é o Ricardo Dias.\n    O Ricardo tomou a decisão de migrar o banco de vetor de Chroma para Qdrant na semana passada devido à performance.\n    Isso causou um bug na indexação que foi resolvido pelo Agente de Correção.\n    O sistema usa Gemini como LLM principal, mas suporta fallback para OpenAI.\n    A Arquitetura é construída em Python (FastAPI) e React.\n    O objetivo é ter Memória Infinita e Raciocínio Agêntico.",
+    "file_path": "unknown_source",
+    "create_time": 1766074973,
+    "update_time": 1766074973,
+    "_id": "doc-40e045710930ad5691a03d8af906f7b4"
+  }
+}

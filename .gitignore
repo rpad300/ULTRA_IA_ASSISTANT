@@ -1,0 +1,196 @@
+# ============================================
+# Environment Variables & Secrets
+# ============================================
+.env
+.env.local
+.env.*.local
+*.env
+src/backend/.env
+src/frontend/.env
+src/frontend/.env.local
+src/frontend/.env.production
+
+# ============================================
+# Python
+# ============================================
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+*.pyc
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ============================================
+# Node.js / Frontend
+# ============================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+.npm
+.eslintcache
+.node_repl_history
+*.tgz
+.yarn-integrity
+
+# ============================================
+# Build outputs
+# ============================================
+dist/
+build/
+*.tsbuildinfo
+out/
+.next/
+.nuxt/
+.cache/
+.parcel-cache/
+
+# ============================================
+# IDE & Editor
+# ============================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+
+# ============================================
+# Logs
+# ============================================
+*.log
+logs/
+*.log.*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+backend_auth.log
+backend_debug.log
+audio_service.log
+
+# ============================================
+# OS Files
+# ============================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ============================================
+# Project Specific
+# ============================================
+# Google OAuth credentials
+client_secret*.json
+token.json
+src/backend/client_secret.json
+src/backend/token.json
+
+# Audio recordings (test files)
+gravaçoes teste/
+*.wav
+*.mp3
+*.webm
+*.raw
+src/backend/data/voice_samples/*.wav
+src/backend/data/voice_samples/*.webm
+
+# Settings files (may contain sensitive data)
+settings.json
+src/backend/settings.json
+
+# Database dumps
+*.sql
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+*.swp
+*.swo
+*~
+
+# Test outputs
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# ============================================
+# Electron
+# ============================================
+dist/electron/
+*.app
+*.exe
+*.dmg
+*.pkg
+
+# ============================================
+# C# / .NET (Audio Service)
+# ============================================
+audio-streaming-service/bin/
+audio-streaming-service/obj/
+*.csproj.user
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# ============================================
+# ML Models & Large Files
+# ============================================
+*.ckpt
+*.pth
+*.pt
+*.h5
+*.pb
+*.onnx
+pretrained_models/
+*.model
+*.bin
+
+# ============================================
+# Keep these files (don't ignore)
+# ============================================
+!.env.example
+!src/backend/.env.example
+!package.json
+!package-lock.json
+!requirements.txt
+!src/backend/requirements.txt
+!src/frontend/package.json
