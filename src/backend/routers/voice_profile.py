@@ -20,69 +20,42 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+class PromoteGuestRequest(BaseModel):
+    guest_id: str
+    session_id: str
+
 class NativeEnrollmentRequest(BaseModel):
     file_path: str
     transcript: Optional[str] = None
 
-# --- Helpers ---
-
-async def _save_upload_to_disk(contact_id: str, file: UploadFile) -> str:
-    """Saves uploaded file to local disk and returns path."""
-    sample_dir = os.path.join(os.getcwd(), "data", "voice_samples", contact_id)
-    os.makedirs(sample_dir, exist_ok=True)
+@router.post("/{contact_id}/promote-guest")
+async def promote_guest_to_profile(
+    contact_id: str,
+    request: PromoteGuestRequest,
+    service: VoiceEnrollmentService = Depends(get_voice_enrollment_service)
+):
+    """
+    SOTA: Promotes a Guest (Session) to a Contact (Permanent) using in-memory embeddings.
+    No new audio upload required.
+    """
+    svc_speaker = get_local_speaker_service()
     
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    # Sanitize filename
-    safe_name = os.path.basename(file.filename)
-    filename = f"sample_{timestamp}_{safe_name}"
-    file_path = os.path.join(sample_dir, filename)
+    # 1. Retrieve Guest Profile from Hot Cache
+    guest_profile = svc_speaker.get_session_guest_profile(request.session_id, request.guest_id)
     
-    contents = await file.read()
-    with open(file_path, "wb") as f:
-        f.write(contents)
+    if not guest_profile or not guest_profile.get('buffer'):
+        raise HTTPException(status_code=404, detail="Guest voice data not found in session cache. Session might have closed.")
+
+    # 2. Lazy Enrollment (Pivot)
+    # Uses the buffer of recent high-quality embeddings
+    embeddings = guest_profile['buffer']
+    success = await service.enroll_from_embeddings(contact_id, embeddings)
     
-    return file_path
-
-async def _register_sample_db(contact_id: str, file_path: str, filename: str, duration_ms: int = 0, transcript: str = None) -> str:
-    """Registers the sample in DB and returns the storage path (e.g. gdrive:ID or local path)."""
-    # 1. Drive Upload (Optional - could be offloaded but kept here for data safety)
-    drive_service = get_drive_service()
-    db_path = file_path
-    
-    if drive_service:
-        try:
-            # We run blocking drive upload in thread
-            def _upload():
-                voice_folder = drive_service.ensure_folder("Voice Samples")
-                contact_folder = drive_service.ensure_folder(contact_id, parent_id=voice_folder)
-                return drive_service.upload_file(file_path, mime_type="audio/wav", parent_id=contact_folder)
-
-            drive_id = await asyncio.to_thread(_upload)
-            if drive_id:
-                db_path = f"gdrive:{drive_id}"
-        except Exception as e:
-            logger.error(f"Drive upload failed: {e}")
-
-    # 2. DB Insert
-    supabase = await get_async_supabase_client()
-    try:
-        await supabase.table("voice_samples").insert({
-            "contact_id": contact_id,
-            "file_path": db_path,
-            "file_name": filename,
-            "duration_ms": duration_ms,
-            "transcript": transcript,
-            "word_count": len(transcript.split()) if transcript else 0
-        }).execute()
-    except Exception as e:
-        logger.error(f"DB Insert failed: {e}")
-        # Proceed even if DB fails? 
-        # For enrollment service, we pass the db_path (or file_path if db failed).
-        pass
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to promote guest to profile.")
         
-    return db_path
+    return {"status": "success", "message": f"Promoted guest {request.guest_id} to contact {contact_id}"}
 
-# --- Endpoints ---
 
 @router.post("/enroll-native/{contact_id}")
 async def enroll_native_voice_profile(
@@ -99,6 +72,10 @@ async def enroll_native_voice_profile(
     normalized_path = os.path.normpath(request.file_path.strip('"').strip("'"))
     if not os.path.exists(normalized_path):
         raise HTTPException(status_code=400, detail="Recording file not found on server.")
+
+    # MIME Validation (Extension based for native path)
+    if not normalized_path.lower().endswith(('.wav', '.mp3', '.m4a', '.webm')):
+         raise HTTPException(status_code=400, detail="Invalid audio file type. Supported: wav, mp3, m4a, webm")
 
     # Copy to standardized location
     sample_dir = os.path.join(os.getcwd(), "data", "voice_samples", contact_id)
@@ -132,6 +109,12 @@ async def enroll_voice_profile(
     """
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
+
+    # SOTA: MIME Type Validation
+    valid_types = ["audio/wav", "audio/mpeg", "audio/x-m4a", "audio/webm", "video/webm", "application/octet-stream"]
+    for file in files:
+        if file.content_type not in valid_types and not file.filename.lower().endswith(('.wav', '.mp3', '.m4a', '.webm')):
+             raise HTTPException(status_code=400, detail=f"Invalid file type: {file.filename}. Supported: wav, mp3, m4a, webm")
 
     logger.info(f"Bulk Enrollment accepted for {contact_id} ({len(files)} files). Processing in background...")
     
@@ -279,10 +262,10 @@ async def delete_voice_profile(contact_id: str):
 async def get_audio_sample(contact_id: str, sample_id: str):
     try:
         supabase = await get_async_supabase_client()
-        res = await supabase.table("voice_samples").select("file_path").eq("id", sample_id).eq("contact_id", contact_id).single().execute()
-        if not res.data: raise HTTPException(status_code=404, detail="Not found")
+        res = await supabase.table("voice_samples").select("file_path").eq("id", sample_id).eq("contact_id", contact_id).limit(1).execute()
+        if not res.data or len(res.data) == 0: raise HTTPException(status_code=404, detail="Not found")
         
-        path = res.data["file_path"]
+        path = res.data[0]["file_path"]
         provider = get_storage_provider(path)
         data = await provider.get_bytes(path)
         
@@ -300,3 +283,62 @@ async def delete_voice_sample(contact_id: str, sample_id: str):
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# --- Helpers ---
+
+async def _save_upload_to_disk(contact_id: str, file: UploadFile) -> str:
+    """Saves an UploadFile to the local voice_samples directory."""
+    sample_dir = os.path.join(os.getcwd(), "data", "voice_samples", contact_id)
+    os.makedirs(sample_dir, exist_ok=True)
+    
+    # Secure filename
+    safe_name = f"{uuid.uuid4().hex}_{file.filename}"
+    dest_path = os.path.join(sample_dir, safe_name)
+    
+    content = await file.read()
+    with open(dest_path, "wb") as f:
+        f.write(content)
+        
+    return dest_path
+
+async def _register_sample_db(contact_id: str, file_path: str, filename: str, transcript: Optional[str] = None) -> str:
+    """
+    Registers a sample in Supabase (and optionally uploads to Drive if configured).
+    Returns the 'final_path' to be stored (could be drive_id or local path).
+    """
+    supabase = await get_async_supabase_client()
+    
+    # 1. Drive Upload (Optional SOTA)
+    final_path = file_path
+    
+    # Check if Drive is enabled
+    # We can use storage provider to put?
+    # For now, let's assume 'local' strategy or simple hybrid.
+    
+    # If we want to support Drive later, we would:
+    # provider = get_storage_provider("gdrive://...")
+    # await provider.put(file_path)
+    
+    # 2. Insert into DB
+    try:
+        # Get duration/size if possible? 
+        size_bytes = os.path.getsize(file_path)
+        
+        sample_data = {
+            "contact_id": contact_id,
+            "file_path": final_path,
+            "file_name": filename,
+            "file_size": size_bytes,
+            "duration_ms": 0, # To be filled by processor?
+            "transcript": transcript,
+            "created_at": datetime.datetime.now().isoformat()
+        }
+        
+        res = await supabase.table("voice_samples").insert(sample_data).execute()
+        if res.data:
+            return final_path
+            
+    except Exception as e:
+        logger.error(f"Failed to register sample in DB: {e}")
+        
+    return final_path

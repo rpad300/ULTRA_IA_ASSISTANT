@@ -11,7 +11,7 @@ import { SmartActionItems } from "@/components/sessions/SmartActionItems";
 import { FlowPredictionPane } from "@/components/sessions/FlowPredictionPane";
 import { AdvancedAnalyticsDashboard } from "@/components/sessions/AdvancedAnalyticsDashboard";
 import { SmartHighlightingPane } from "@/components/sessions/SmartHighlightingPane";
-import { MeetingQualityScoreCard } from "@/components/sessions/MeetingQualityScoreCard";
+
 import { AICoPilotPanel } from "@/components/sessions/AICoPilotPanel";
 import { CrossMeetingIntelligence } from "@/components/sessions/CrossMeetingIntelligence";
 import { PredictivePreparation } from "@/components/sessions/PredictivePreparation";
@@ -48,16 +48,18 @@ export const DASHBOARD_WIDGETS: Record<string, DashboardWidgetConfig> = {
     'actions': { component: SmartActionItems, id: 'actions', group: 'insights', title: 'Action Items', defaultVisible: true },
     'live-insights': { component: LiveInsightsPane, id: 'live-insights', group: 'insights', title: 'Live Insights', defaultVisible: true },
 
-    // Timeline & Topics
+    // Timeline & Topics (Visual Timeline is standalone in the bottom row)
     'timeline': { component: VisualTimeline, id: 'timeline', group: 'timeline', title: 'Timeline', defaultVisible: true },
-    'clusters': { component: TopicClustersPane, id: 'clusters', group: 'timeline', title: 'Topic Clusters', defaultVisible: true },
-    'conflict': { component: ConflictDetection, id: 'conflict', group: 'timeline', title: 'Conflicts', defaultVisible: true },
-    'flow': { component: FlowPredictionPane, id: 'flow', group: 'timeline', title: 'Flow Prediction', defaultVisible: true },
+
+    // Redistributed from Timeline to avoid vertical stacking overflow
+    'clusters': { component: TopicClustersPane, id: 'clusters', group: 'insights', title: 'Topic Clusters', defaultVisible: true },
+    'conflict': { component: ConflictDetection, id: 'conflict', group: 'health', title: 'Conflicts', defaultVisible: true },
+    'flow': { component: FlowPredictionPane, id: 'flow', group: 'coaching', title: 'Flow Prediction', defaultVisible: true },
 
     // Advanced Stats (Detailed Mode)
     'analytics': { component: AdvancedAnalyticsDashboard, id: 'analytics', group: 'analytics', title: 'Advanced Analytics', defaultVisible: false },
     'highlights': { component: SmartHighlightingPane, id: 'highlights', group: 'highlights', title: 'Highlights', defaultVisible: false },
-    'quality': { component: MeetingQualityScoreCard, id: 'quality', group: 'quality', title: 'Quality Score', defaultVisible: false },
+    // 'quality': { component: MeetingQualityScoreCard, id: 'quality', group: 'quality', title: 'Quality Score', defaultVisible: false },
     'prep': { component: PredictivePreparation, id: 'prep', group: 'preparation', title: 'Preparation', defaultVisible: false },
     'relation': { component: RelationshipIntelligence, id: 'relation', group: 'relationships', title: 'Relationships', defaultVisible: false },
 };

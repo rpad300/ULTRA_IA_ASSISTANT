@@ -1,69 +1,13 @@
-import type { StateCreator } from 'zustand';
-import type { MeetingState } from '../meetingStore';
+import type { MeetingSlice, AudioSlice } from '../types';
 import { audioServiceApi } from '@/api/client';
-import type { AudioServiceStatus, AudioDevice } from '@/types/slices/audio';
+import type { AudioServiceStatus, AudioDevice, CaptureState, Infrastructure } from '@/types/slices/audio';
+import { toDeviceId } from '@/types/slices/audio';
 
-export interface AudioSlice {
-    // Service State
-    audioServiceStatus: AudioServiceStatus | null;
-    audioServiceDevices: { microphones: AudioDevice[]; speakers: AudioDevice[] }; // Renamed from audioDevices
-
-    // Legacy / UI Flags
-    isAudioCapturing: boolean;
-    audioLevel: number;
-    systemAudioLevel: number;
-    picoVoiceStatus: 'unknown' | 'initializing' | 'ready' | 'failed';
-
-    // Permissions
-    microphonePermission: 'granted' | 'denied' | 'prompt' | 'unknown';
-    systemAudioPermission: 'granted' | 'denied' | 'prompt' | 'unknown' | 'not_requested';
-
-    // Config State
-    audioGain: number;
-    selectedMicrophoneDevice: string | null;
-    selectedSystemAudioDevice: string | null;
-    customVocabulary: string[];
-    autoStopEnabled: boolean;
-    silenceTimeoutMs: number;
-
-    startAudioService: (sysId?: string, micId?: string) => Promise<void>;
-    stopAudioService: () => Promise<void>;
-    // Actions
-    getAudioServiceStatus: () => Promise<AudioServiceStatus | null>;
-    refreshAudioStatus: () => Promise<void>;
-    startNativeStream: (sessionId: string) => Promise<void>;
-    stopAllAudio: () => Promise<void>;
-
-    // Config Actions
-    setGain: (gain: number) => Promise<void>;
-    setAudioGain: (gain: number) => Promise<void>;
-    setCustomVocabulary: (vocab: string[]) => void;
-    setAutoStopEnabled: (enabled: boolean) => void;
-
-    // Permission Actions
-    checkMicrophonePermission: () => Promise<void>;
-    requestMicrophonePermission: () => Promise<void>;
-    requestSystemAudioPermission: () => Promise<void>;
-    setMicrophonePermission: (permission: 'granted' | 'denied' | 'prompt' | 'unknown') => void;
-    setSystemAudioPermission: (permission: 'granted' | 'denied' | 'prompt' | 'unknown' | 'not_requested') => void;
-
-    // Level Acts
-    setAudioLevel: (level: number) => void;
-    setSystemAudioLevel: (level: number) => void;
-    setAudioCapturing: (isCapturing: boolean) => void;
-    setPicoVoiceStatus: (status: 'unknown' | 'initializing' | 'ready' | 'failed') => void;
-
-    // Device Actions
-    getAudioServiceDevices: () => Promise<{ microphones: AudioDevice[]; speakers: AudioDevice[] }>;
-    setAudioServiceDevice: (deviceId: string) => Promise<void>;
-    setSelectedMicrophoneDevice: (deviceId: string | null) => void;
-    setSelectedSystemAudioDevice: (deviceId: string | null) => void;
-}
-
-export const createAudioSlice: StateCreator<MeetingState, [], [], AudioSlice> = (set, get) => ({
+export const createAudioSlice: MeetingSlice<AudioSlice> = (set, get) => ({
     audioServiceStatus: null,
     audioServiceDevices: { microphones: [], speakers: [] },
 
+    // Legacy / Convenience flags (computed or synced)
     isAudioCapturing: false,
     audioLevel: 0,
     systemAudioLevel: 0,
@@ -80,35 +24,146 @@ export const createAudioSlice: StateCreator<MeetingState, [], [], AudioSlice> = 
     autoStopEnabled: true,
     silenceTimeoutMs: 5000,
 
+    // Internal State for Sticky Clipping
+    _lastMicClipTime: 0,
+    _lastSystemClipTime: 0,
+
+    // --- Actions ---
+
+    setSignalStability: (stability: number) => set((s) => {
+        if (s.audioServiceStatus) {
+            s.audioServiceStatus.signalStability = stability;
+        }
+    }),
+
+    measureBackendLatency: async () => {
+        const start = performance.now();
+        try {
+            await audioServiceApi.getStatus(); // Simple ping
+            const latency = Math.round(performance.now() - start);
+            return latency > 0 ? latency : 1;
+        } catch {
+            return -1;
+        }
+    },
+
     getAudioServiceStatus: async () => {
+        const startLatency = performance.now();
         try {
             const apiStatus = await audioServiceApi.getStatus();
-            const mapped: AudioServiceStatus = {
-                isCapturing: apiStatus.isCapturing,
-                isConnected: apiStatus.isConnected,
-                isBackendConnected: apiStatus.isConnected, // Alias
-                isAssemblyAIConnected: apiStatus.isAssemblyAIConnected,
-                selectedDeviceId: apiStatus.selectedDeviceId,
-                levels: {
-                    mic: apiStatus.microphone?.level || 0,
-                    system: apiStatus.systemAudio?.level || 0
+            const latency = Math.round(performance.now() - startLatency);
+
+            // --- SOTA Mapping Logic ---
+
+            // 1. Capture State
+            let captureState: CaptureState;
+            if (apiStatus.isCapturing) {
+                captureState = { status: 'capturing' };
+            } else {
+                captureState = { status: 'idle' };
+            }
+
+            // 2. Infrastructure
+            const infra: Infrastructure = {
+                backend: {
+                    status: apiStatus.isBackendConnected || apiStatus.isConnected ? 'connected' : 'disconnected',
+                    latencyMs: latency
                 },
-                // Legacy Compat
-                microphone: {
-                    level: apiStatus.microphone?.level || 0,
-                    detectingAudio: (apiStatus.microphone?.level || 0) > 0,
-                    deviceName: apiStatus.microphone?.deviceName || 'Standard Mic'
+                provider: {
+                    status: apiStatus.isAssemblyAIConnected ? 'connected' : 'disconnected',
+                    latencyMs: undefined // Cloud latency unknown for now
                 },
-                systemAudio: {
-                    level: apiStatus.systemAudio?.level || 0,
-                    detectingAudio: (apiStatus.systemAudio?.level || 0) > 0,
-                    deviceName: apiStatus.systemAudio?.deviceName || 'System Audio'
+                localService: {
+                    status: 'connected',
+                    latencyMs: 5 // IPC overhead
                 }
             };
-            set({ audioServiceStatus: mapped });
-            return mapped;
+
+            // 3. Telemetry & Sticky Clipping
+            const now = Date.now();
+            const micLevelVal = apiStatus.microphone?.level || 0;
+            const sysLevelVal = apiStatus.systemAudio?.level || 0;
+
+            // Mic Clipping
+            const isMicClippingRaw = micLevelVal > 0.95;
+            const currentLastMicClip = (get() as any)._lastMicClipTime || 0;
+            let micClipping = isMicClippingRaw;
+            let newLastMicClip = currentLastMicClip;
+
+            if (isMicClippingRaw) {
+                newLastMicClip = now;
+            } else if (now - currentLastMicClip < 500) {
+                micClipping = true; // Hold
+            }
+
+            // System Clipping
+            const isSysClippingRaw = sysLevelVal > 0.95;
+            const currentLastSysClip = (get() as any)._lastSystemClipTime || 0;
+            let sysClipping = isSysClippingRaw;
+            let newLastSysClip = currentLastSysClip;
+
+            if (isSysClippingRaw) {
+                newLastSysClip = now;
+            } else if (now - currentLastSysClip < 500) {
+                sysClipping = true; // Hold
+            }
+
+            // Construct SOTA Status Object
+            const sotaStatus: AudioServiceStatus = {
+                status: captureState,
+                infrastructure: infra,
+                selectedDeviceId: apiStatus.selectedDeviceId ? toDeviceId(apiStatus.selectedDeviceId) : null,
+                levels: {
+                    mic: {
+                        rms: micLevelVal,
+                        peak: micLevelVal,
+                        clipping: micClipping
+                    },
+                    system: {
+                        rms: sysLevelVal,
+                        peak: sysLevelVal,
+                        clipping: sysClipping
+                    }
+                },
+                signalStability: 1.0 // This will be updated by the runtime hook, start with ideal
+            };
+
+            set((state: any) => {
+                state.audioServiceStatus = sotaStatus;
+                // Update legacy flags
+                state.isAudioCapturing = apiStatus.isCapturing;
+                state._lastMicClipTime = newLastMicClip;
+                state._lastSystemClipTime = newLastSysClip;
+            });
+
+            return sotaStatus;
         } catch (e) {
-            set({ audioServiceStatus: null });
+            set((state) => {
+                const errorState: AudioServiceStatus = {
+                    status: {
+                        status: 'error',
+                        error: {
+                            code: 'CONNECTION_FAILED',
+                            message: 'Could not reach audio service',
+                            recoverable: true
+                        }
+                    },
+                    infrastructure: {
+                        backend: { status: 'failed', latencyMs: 0 },
+                        provider: { status: 'disconnected', latencyMs: 0 },
+                        localService: { status: 'failed', latencyMs: 0 }
+                    },
+                    selectedDeviceId: null,
+                    levels: {
+                        mic: { rms: 0, peak: 0, clipping: false },
+                        system: { rms: 0, peak: 0, clipping: false }
+                    },
+                    signalStability: 0
+                };
+
+                state.audioServiceStatus = errorState;
+                state.isAudioCapturing = false;
+            });
             return null;
         }
     },
@@ -118,49 +173,59 @@ export const createAudioSlice: StateCreator<MeetingState, [], [], AudioSlice> = 
     },
 
     startNativeStream: async (sessionId: string) => {
-        let micId = get().selectedMicrophoneDevice || get().audioServiceStatus?.selectedDeviceId;
-        let sysId = get().selectedSystemAudioDevice;
+        const state = get();
+        set((s) => {
+            if (s.audioServiceStatus) {
+                s.audioServiceStatus.status = { status: 'initializing' };
+            }
+        });
 
-        // Auto-select first microphone
+        let micId = state.selectedMicrophoneDevice || state.audioServiceStatus?.selectedDeviceId;
+        let sysId = state.selectedSystemAudioDevice;
+
+        // Auto-select logic
         if (!micId) {
-            const devices = await get().getAudioServiceDevices();
+            const devices = await state.getAudioServiceDevices();
             if (devices.microphones.length > 0) {
                 micId = devices.microphones[0].id;
-                set({ selectedMicrophoneDevice: micId });
-                console.log("[AudioSlice] Auto-selected Microphone:", devices.microphones[0].name);
+                set((s) => { s.selectedMicrophoneDevice = micId!; });
             }
-
-            // Auto-select first System Audio (Speaker) for Loopback
             if (!sysId && devices.speakers.length > 0) {
                 sysId = devices.speakers[0].id;
-                set({ selectedSystemAudioDevice: sysId });
-                console.log("[AudioSlice] Auto-selected System Audio:", devices.speakers[0].name);
+                set((s) => { s.selectedSystemAudioDevice = sysId!; });
             }
         }
 
-
-        // Read preference from localStorage (set by SettingsView)
         const pref = localStorage.getItem('transcription_preference');
-        const useAssemblyAI = pref !== 'whisper'; // Default to true unless explicitly whisper
+        const useAssemblyAI = pref !== 'whisper';
 
-        const payload = {
-            sessionId,
-            micId: micId || undefined,
-            sysId: sysId || undefined,
-            useAssemblyAI
-        };
-        await audioServiceApi.startStreaming(payload.sysId, payload.micId, [], sessionId, payload.useAssemblyAI);
-        set({ isAudioCapturing: true });
+        try {
+            await audioServiceApi.startStreaming(sysId || undefined, micId || undefined, [], sessionId, useAssemblyAI);
+            set((s) => {
+                s.isAudioCapturing = true;
+                if (s.audioServiceStatus) {
+                    s.audioServiceStatus.status = { status: 'capturing' };
+                    s.audioServiceStatus.infrastructure.backend.status = 'connected';
+                    s.audioServiceStatus.infrastructure.provider.status = 'connected';
+                }
+            });
+        } catch (e) {
+            set((s) => {
+                if (s.audioServiceStatus) {
+                    s.audioServiceStatus.status = {
+                        status: 'error',
+                        error: { code: 'START_FAILED', message: 'Failed to start stream', recoverable: true }
+                    };
+                }
+            });
+        }
     },
 
     startAudioService: async (sysId?: string, micId?: string) => {
-        // Compatibility: Allow passing device IDs, set them in state, then start
-        if (sysId) set({ selectedSystemAudioDevice: sysId });
-        if (micId) set({ selectedMicrophoneDevice: micId });
+        if (sysId) set((s) => { s.selectedSystemAudioDevice = sysId; });
+        if (micId) set((s) => { s.selectedMicrophoneDevice = micId; });
 
-        // Retrieve sessionId from the root store (SessionSlice)
-        // We cast to any to access sibling slices in the monolithic store
-        const sessionId = (get() as any).sessionId;
+        const sessionId = get().sessionId;
         if (!sessionId) {
             console.warn("Cannot start audio service: No active session ID");
             return;
@@ -174,7 +239,16 @@ export const createAudioSlice: StateCreator<MeetingState, [], [], AudioSlice> = 
             (window as any).__nativeTranscriptionWs.close();
             (window as any).__nativeTranscriptionWs = null;
         }
-        set({ audioServiceStatus: null, isAudioCapturing: false });
+        set((s) => {
+            s.isAudioCapturing = false;
+            // Update SOTA status
+            if (s.audioServiceStatus) {
+                s.audioServiceStatus.status = { status: 'idle' };
+                // Reset levels
+                s.audioServiceStatus.levels.mic = { rms: 0, peak: 0, clipping: false };
+                s.audioServiceStatus.levels.system = { rms: 0, peak: 0, clipping: false };
+            }
+        });
     },
 
     stopAudioService: async () => {
@@ -182,30 +256,29 @@ export const createAudioSlice: StateCreator<MeetingState, [], [], AudioSlice> = 
     },
 
     setGain: async (gain: number) => {
-        if (get().audioServiceStatus?.isConnected) {
+        if (get().audioServiceStatus?.infrastructure.backend.status === 'connected') {
             await audioServiceApi.setGain(gain);
         }
-        set({ audioGain: gain });
+        set((s) => { s.audioGain = gain; });
     },
 
     setAudioGain: async (gain: number) => {
-        if (get().audioServiceStatus?.isConnected) {
+        if (get().audioServiceStatus?.infrastructure.backend.status === 'connected') {
             await audioServiceApi.setGain(gain);
         }
-        set({ audioGain: gain });
+        set((s) => { s.audioGain = gain; });
     },
 
-    setCustomVocabulary: (vocab) => set({ customVocabulary: vocab }),
-    setAutoStopEnabled: (enabled) => set({ autoStopEnabled: enabled }),
+    setCustomVocabulary: (vocab) => set((s) => { s.customVocabulary = vocab; }),
+    setAutoStopEnabled: (enabled) => set((s) => { s.autoStopEnabled = enabled; }),
 
     checkMicrophonePermission: async () => {
-        // Mock implementation for browser permission check
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             stream.getTracks().forEach(t => t.stop());
-            set({ microphonePermission: 'granted' });
+            set((s) => { s.microphonePermission = 'granted'; });
         } catch (e) {
-            set({ microphonePermission: 'denied' });
+            set((s) => { s.microphonePermission = 'denied'; });
         }
     },
 
@@ -213,42 +286,49 @@ export const createAudioSlice: StateCreator<MeetingState, [], [], AudioSlice> = 
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             stream.getTracks().forEach(t => t.stop());
-            set({ microphonePermission: 'granted' });
+            set((s) => { s.microphonePermission = 'granted'; });
         } catch (e) {
-            set({ microphonePermission: 'denied' });
+            set((s) => { s.microphonePermission = 'denied'; });
         }
     },
 
     requestSystemAudioPermission: async () => {
-        // Mock - typically requires screen sharing or specific API
-        set({ systemAudioPermission: 'granted' });
+        set((s) => { s.systemAudioPermission = 'granted'; });
     },
 
-    setMicrophonePermission: (p) => set({ microphonePermission: p }),
-    setSystemAudioPermission: (p) => set({ systemAudioPermission: p }),
+    setMicrophonePermission: (p) => set((s) => { s.microphonePermission = p; }),
+    setSystemAudioPermission: (p) => set((s) => { s.systemAudioPermission = p; }),
 
-    setAudioLevel: (l) => set({ audioLevel: l }),
-    setSystemAudioLevel: (l) => set({ systemAudioLevel: l }),
-    setAudioCapturing: (c) => set({ isAudioCapturing: c }),
-    setPicoVoiceStatus: (s) => set({ picoVoiceStatus: s }),
+    setAudioLevel: (l) => set((s) => { s.audioLevel = l; }),
+    setSystemAudioLevel: (l) => set((s) => { s.systemAudioLevel = l; }),
+
+    setAudioCapturing: (c) => set((s) => { s.isAudioCapturing = c; }),
+    setPicoVoiceStatus: (status) => set((s) => { s.picoVoiceStatus = status; }),
 
     getAudioServiceDevices: async () => {
         try {
             const response = await audioServiceApi.getDevices();
             const { microphones, speakers } = response.devices;
 
-            // Map to store AudioDevice type which requires isDefault and kind
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const mapDevice = (d: any, kind: 'microphone' | 'speaker'): AudioDevice => ({
-                id: d.id,
+                id: toDeviceId(d.id),
                 name: d.name,
                 isDefault: !!d.isDefault,
-                kind: kind
+                kind: kind,
+                capabilities: {
+                    noiseSuppression: false,
+                    echoCancellation: false,
+                    autoGainControl: false
+                },
+                sampleRate: 0, // Unknown
+                channels: 0    // Unknown
             });
 
             const mappedMics = microphones.map(d => mapDevice(d, 'microphone'));
             const mappedSpeakers = speakers.map(d => mapDevice(d, 'speaker'));
 
-            set({ audioServiceDevices: { microphones: mappedMics, speakers: mappedSpeakers } });
+            set((s) => { s.audioServiceDevices = { microphones: mappedMics, speakers: mappedSpeakers }; });
             return { microphones: mappedMics, speakers: mappedSpeakers };
         } catch (e) {
             console.error("Failed to fetch devices", e);
@@ -257,11 +337,9 @@ export const createAudioSlice: StateCreator<MeetingState, [], [], AudioSlice> = 
     },
 
     setAudioServiceDevice: async (_deviceId) => {
-        // Logic to call API if backend supports setting device explicitly
-        // or just update local selection state
-        // backend startStreaming takes deviceId, so we just update state here.
+        // Placeholder for explicit device setting if supported by backend
     },
 
-    setSelectedMicrophoneDevice: (id) => set({ selectedMicrophoneDevice: id }),
-    setSelectedSystemAudioDevice: (id) => set({ selectedSystemAudioDevice: id }),
+    setSelectedMicrophoneDevice: (id) => set((s) => { s.selectedMicrophoneDevice = id; }),
+    setSelectedSystemAudioDevice: (id) => set((s) => { s.selectedSystemAudioDevice = id; }),
 });

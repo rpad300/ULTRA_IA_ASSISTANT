@@ -1,0 +1,27 @@
+
+[threads] Error: {'message': 'Cannot coerce the result to a single JSON object', 'code': 'PGRST116', 'hint': None, 'details': 'The result contains 0 rows'}
+Traceback (most recent call last):
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\db\repositories\base_repository.py", line 27, in _execute
+    response = await query.execute()
+               ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\.venv\Lib\site-packages\postgrest\_async\request_builder.py", line 82, in execute
+    raise APIError(dict(json_obj))
+postgrest.exceptions.APIError: {'message': 'Cannot coerce the result to a single JSON object', 'code': 'PGRST116', 'hint': None, 'details': 'The result contains 0 rows'}
+
+[messages] Error: {'message': "Could not find the 'status' column of 'messages' in the schema cache", 'code': 'PGRST204', 'hint': None, 'details': None}
+Traceback (most recent call last):
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\db\repositories\base_repository.py", line 27, in _execute
+    response = await query.execute()
+               ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\.venv\Lib\site-packages\postgrest\_async\request_builder.py", line 53, in execute
+    raise APIError(dict(json_obj))
+postgrest.exceptions.APIError: {'message': "Could not find the 'status' column of 'messages' in the schema cache", 'code': 'PGRST204', 'hint': None, 'details': None}
+
+[messages] Error: {'message': "Could not find the 'status' column of 'messages' in the schema cache", 'code': 'PGRST204', 'hint': None, 'details': None}
+Traceback (most recent call last):
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\db\repositories\base_repository.py", line 27, in _execute
+    response = await query.execute()
+               ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\.venv\Lib\site-packages\postgrest\_async\request_builder.py", line 53, in execute
+    raise APIError(dict(json_obj))
+postgrest.exceptions.APIError: {'message': "Could not find the 'status' column of 'messages' in the schema cache", 'code': 'PGRST204', 'hint': None, 'details': None}

@@ -59,9 +59,9 @@ export function NativeAudioView() {
         return () => clearInterval(interval);
     }, []);
 
-    const isBackendConnected = audioServiceStatus?.isBackendConnected;
-    const isAAIConnected = audioServiceStatus?.isAssemblyAIConnected;
-    const isCapturing = audioServiceStatus?.isCapturing;
+    const isBackendConnected = audioServiceStatus?.infrastructure.backend.status === 'connected';
+    const isAAIConnected = audioServiceStatus?.infrastructure.provider.status === 'connected';
+    const isCapturing = audioServiceStatus?.status.status === 'capturing';
 
     let aaiStatusClass = "text-muted-foreground border-border";
     let aaiStatusText = "AssemblyAI: Standby";

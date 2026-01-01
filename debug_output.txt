@@ -1,0 +1,5 @@
+INFO:debug_copilot:Connecting to ws://localhost:8000/api/ws/threads/debug-test-thread/messages...
+INFO:debug_copilot:Successfully connected with Origin!
+INFO:debug_copilot:Received: {"type":"error","message":"Failed to load history"}
+INFO:debug_copilot:Sent ping
+INFO:debug_copilot:Received response: {"type":"pong"}

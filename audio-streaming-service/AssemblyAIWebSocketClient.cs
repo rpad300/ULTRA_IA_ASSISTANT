@@ -24,7 +24,7 @@ namespace AudioStreamingService
         private volatile bool isConnected = false;
         private readonly TaskCompletionSource<bool> connectionTcs = new TaskCompletionSource<bool>();
         private readonly CancellationTokenSource cts = new CancellationTokenSource();
-        private readonly AutoResetEvent signal = new AutoResetEvent(false);
+        private readonly SemaphoreSlim signal = new SemaphoreSlim(0);
         
         // Async Send Queue
         private readonly System.Collections.Concurrent.ConcurrentQueue<ArraySegment<byte>> audioQueue = new System.Collections.Concurrent.ConcurrentQueue<ArraySegment<byte>>(); 
@@ -53,14 +53,10 @@ namespace AudioStreamingService
                 // SOTA Upgrade: v3 Universal Streaming
                 var url = $"wss://streaming.assemblyai.com/v3/ws?sample_rate={sampleRate}&encoding=pcm_s16le";
                 
-                // DEBUG: Force Portuguese + Multilingual Model to verify functionality
-                // We suspect "language_detection=true" + "pcm_s16le" might be conflicting or silent
-                
                 // Force Model
                 url += "&speech_model=universal-streaming-multilingual";
                 
                 // Force Language (ignoring "auto" logic for this debug step)
-                // If the user said "auto", we assume PT behavior for now to fix the "Forward" issue.
                 url += "&language_code=pt";
 
                 if (keytermsPrompt != null && keytermsPrompt.Count > 0)
@@ -70,11 +66,11 @@ namespace AudioStreamingService
                 }
 
                 var headers = new List<KeyValuePair<string, string>>
-            {
-                 new KeyValuePair<string, string>("Authorization", apiKey)
-            };
+                {
+                     new KeyValuePair<string, string>("Authorization", apiKey)
+                };
             
-            ws = new WebSocket4Net.WebSocket(url, "", null, headers);
+                ws = new WebSocket4Net.WebSocket(url, "", null, headers);
                 
                 ws.Opened += (s, e) => 
                 {
@@ -98,9 +94,6 @@ namespace AudioStreamingService
                 {
                      try
                      {
-                         // DEBUG: Log Raw V3 Message to see format
-                         // Console.WriteLine($"[AssemblyAI RAW]: {e.Message}"); 
-                         
                          var json = JsonSerializer.Deserialize<Dictionary<string, object>>(e.Message);
                          if (json != null)
                          {
@@ -127,7 +120,15 @@ namespace AudioStreamingService
         {
             while (!cts.Token.IsCancellationRequested)
             {
-                signal.WaitOne(500); // Wait for signal or timeout
+                try 
+                {
+                    await signal.WaitAsync(500, cts.Token);
+                } 
+                catch (OperationCanceledException) 
+                { 
+                    break;
+                }
+
                 if (cts.Token.IsCancellationRequested) break;
                 if (ws == null || ws.State != WebSocket4Net.WebSocketState.Open) continue;
 
@@ -165,21 +166,21 @@ namespace AudioStreamingService
             }
             
             audioQueue.Enqueue(audioSegment);
-            signal.Set();
+            signal.Release();
         }
         
         public void SendTerminate()
         {
             var msg = JsonSerializer.Serialize(new Dictionary<string, bool> { { "terminate_session", true } });
             messageQueue.Enqueue(msg);
-            signal.Set();
+            signal.Release();
         }
         
         public void SendForceEndpoint()
         {
              var msg = JsonSerializer.Serialize(new Dictionary<string, bool> { { "force_end_utterance", true } });
              messageQueue.Enqueue(msg);
-             signal.Set();
+             signal.Release();
         }
         
         public void Disconnect()

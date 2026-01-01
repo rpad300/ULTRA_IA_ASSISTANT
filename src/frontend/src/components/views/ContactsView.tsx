@@ -18,8 +18,10 @@ import { workspaceApi, type Contact } from "@/api/client";
 import { useWorkspaceStore } from "@/store/workspaceStore";
 
 export function ContactsView() {
+    // SOTA: Strict Selectors
+    const companies = useWorkspaceStore(state => state.companies);
+    const fetchCompanies = useWorkspaceStore(state => state.fetchCompanies);
 
-    const { companies, fetchCompanies } = useWorkspaceStore();
     const navigate = useNavigate();
     const [contacts, setContacts] = useState<Contact[]>([]);
     const [searchQuery, setSearchQuery] = useState("");
@@ -32,19 +34,34 @@ export function ContactsView() {
 
     // Fetch contacts and companies on mount
     useEffect(() => {
+        const controller = new AbortController();
+        const signal = controller.signal;
+
         const loadData = async () => {
             setIsLoading(true);
             try {
-                await fetchCompanies();
-                const contactsData = await workspaceApi.getContacts();
-                setContacts(contactsData);
+                // Parallel fetch
+                await Promise.all([
+                    fetchCompanies(),
+                    workspaceApi.getContacts().then(data => {
+                        if (!signal.aborted) setContacts(data);
+                    })
+                ]);
             } catch (error) {
-                console.error("Failed to load contacts:", error);
+                if (!signal.aborted) {
+                    console.error("Failed to load contacts:", error);
+                }
             } finally {
-                setIsLoading(false);
+                if (!signal.aborted) {
+                    setIsLoading(false);
+                }
             }
         };
         loadData();
+
+        return () => {
+            controller.abort();
+        };
     }, [fetchCompanies]);
 
     // Get unique roles from contacts

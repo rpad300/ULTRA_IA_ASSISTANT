@@ -1,14 +1,10 @@
-"""
-Retry utilities with exponential backoff for resilient vector operations.
-"""
-
 import asyncio
 import logging
-from typing import Callable, Any, Optional
+import random
+from typing import Callable, Any, Optional, Type, Union, Tuple
 from functools import wraps
 
 logger = logging.getLogger(__name__)
-
 
 async def retry_with_backoff(
     func: Callable,
@@ -16,52 +12,60 @@ async def retry_with_backoff(
     initial_delay: float = 1.0,
     max_delay: float = 60.0,
     exponential_base: float = 2.0,
+    jitter: bool = True,
+    retry_on: Union[Type[Exception], Tuple[Type[Exception], ...]] = Exception,
     *args,
     **kwargs
 ) -> Any:
     """
-    Retry a function with exponential backoff.
-    
-    Args:
-        func: Async function to retry
-        max_retries: Maximum number of retry attempts
-        initial_delay: Initial delay in seconds
-        max_delay: Maximum delay in seconds
-        exponential_base: Base for exponential backoff
-        *args, **kwargs: Arguments to pass to func
-    
-    Returns:
-        Result of func
-    
-    Raises:
-        Exception: If all retries fail
+    SOTA Retry with Full Jitter and Exception Filtering.
+    Prevents 'Thundering Herd' via random backoff and ensures strict error handling.
     """
     delay = initial_delay
-    
+    last_exception = None
+
     for attempt in range(max_retries + 1):
         try:
             if asyncio.iscoroutinefunction(func):
                 return await func(*args, **kwargs)
-            else:
-                return func(*args, **kwargs)
-        except Exception as e:
+            return func(*args, **kwargs)
+
+        except retry_on as e:
+            last_exception = e
             if attempt == max_retries:
-                logger.error(f"Function {func.__name__} failed after {max_retries} retries: {e}")
+                logger.error(f"❌ [SOTA Retry] {func.__name__} exhausted after {max_retries} attempts. Final Error: {e}")
                 raise
-            
+
+            # SOTA: Full Jitter implementation
+            # Instead of waiting exactly 'delay', we wait random(0, min(cap, delay))
+            # This distributes the load of retrying clients.
+            current_delay = min(max_delay, delay)
+            sleep_time = random.uniform(0, current_delay) if jitter else current_delay
+
             logger.warning(
-                f"Function {func.__name__} failed (attempt {attempt + 1}/{max_retries + 1}): {e}. "
-                f"Retrying in {delay:.2f}s..."
+                f"⚠️ [SOTA Retry] {func.__name__} failed (attempt {attempt + 1}/{max_retries + 1}). "
+                f"Reason: {type(e).__name__}. Retrying in {sleep_time:.2f}s..."
             )
-            await asyncio.sleep(delay)
-            delay = min(delay * exponential_base, max_delay)
-    
-    raise Exception(f"Unexpected retry loop exit for {func.__name__}")
+            
+            await asyncio.sleep(sleep_time)
+            delay *= exponential_base
 
+        except Exception as e:
+            # If exception is not in 'retry_on', fail immediately.
+            # This prevents retrying logic errors or 4xx failures that are permanent.
+            logger.error(f"🚫 [SOTA Retry] Non-recoverable error in {func.__name__}: {e}")
+            raise
 
-def retry_on_failure(max_retries: int = 3, initial_delay: float = 1.0):
+    raise last_exception
+
+def retry_on_failure(
+    max_retries: int = 3, 
+    initial_delay: float = 1.0, 
+    retry_on: Union[Type[Exception], Tuple[Type[Exception], ...]] = Exception
+):
     """
-    Decorator for retrying async functions with exponential backoff.
+    SOTA Decorator for async functions.
+    Usage: @retry_on_failure(retry_on=(TimeoutError, ConnectionError))
     """
     def decorator(func: Callable) -> Callable:
         @wraps(func)
@@ -70,6 +74,7 @@ def retry_on_failure(max_retries: int = 3, initial_delay: float = 1.0):
                 func,
                 max_retries=max_retries,
                 initial_delay=initial_delay,
+                retry_on=retry_on,
                 *args,
                 **kwargs
             )

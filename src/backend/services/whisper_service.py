@@ -5,40 +5,59 @@ import numpy as np
 from faster_whisper import WhisperModel
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+import torch
+from managers.gpu_manager import get_gpu_manager
 
 logger = logging.getLogger(__name__)
 
 class WhisperService:
-    def __init__(self, model_size="large-v3", device="cuda", compute_type="float16"):
+    def __init__(self, model_size="distil-large-v3", compute_type="float16"):
+        """
+        SOTA Config:
+        - model_size: 'distil-large-v3'
+        - compute_type: 'float16' 
+        """
         self.model_size = model_size
-        self.device = device
         self.compute_type = compute_type
         self.model = None
         self.executor = ThreadPoolExecutor(max_workers=1)
         self.is_loading = False
+        self.gpu_manager = get_gpu_manager()
 
     def load_model(self):
         if self.model is not None:
             return
         
         try:
-            logger.info(f"Loading Whisper model: {self.model_size} on {self.device}...")
+            best_device = self.gpu_manager.get_best_device()
+            device_str = "cuda" if best_device.type == "cuda" else "cpu"
+            device_index = best_device.index if best_device.index is not None else 0
+
+            logger.info(f"Loading Whisper SOTA ({self.model_size}) on {device_str}:{device_index}...")
             self.is_loading = True
-            # Load on GPU 1 (Index 1) if available, else 0. User has 3090 at index 1.
-            # faster-whisper takes device_index argument.
-            device_index = [0] 
-            # Check availability or passed config. For now defaulting to 0 or 1 based on config?
-            # Let's assume device="cuda" uses default. We can specify device_index=[1] for the 3090.
             
+            # SOTA: Auto-switch compute type for CPU
+            if device_str == "cpu" and self.compute_type == "float16":
+                logger.warning("CPU detected: Switching compute_type from float16 to int8 for compatibility.")
+                self.compute_type = "int8"
+
             self.model = WhisperModel(
                 self.model_size, 
-                device=self.device, 
+                device=device_str, 
                 compute_type=self.compute_type, 
-                device_index=0 # Default to index 0 (Primary GPU)
+                device_index=device_index,
+                local_files_only=False
             )
-            logger.info(f"Whisper model loaded successfully on device {self.device} (Index 0).")
+            logger.info(f"[OK] Whisper SOTA Ready: {self.model_size} loaded.")
         except Exception as e:
-            logger.error(f"Failed to load Whisper model: {e}")
+            logger.error(f"Failed to load Whisper on GPU: {e}")
+            # Fallback
+            if self.gpu_manager.get_best_device().type == "cuda":
+                logger.warning("Falling back to CPU (int8)...")
+                try:
+                    self.model = WhisperModel(self.model_size, device="cpu", compute_type="int8")
+                except Exception as cpu_error:
+                    logger.critical(f"Fatal: CPU Fallback failed: {cpu_error}")
             raise
         finally:
             self.is_loading = False
@@ -46,67 +65,55 @@ class WhisperService:
     async def transcribe_audio(self, audio_data: bytes, prompt: str = None, language: str = None) -> dict:
         """
         Transcribe raw PCM audio bytes (16kHz, mono, s16le).
-        Returns a dict compatible with the 'Turn' format or partial text.
         """
         if self.model is None:
             if not self.is_loading:
-                # Lazy load
                 await asyncio.get_running_loop().run_in_executor(self.executor, self.load_model)
             else:
-                logger.warning("Whisper model is still loading...")
-                return {}
+                while self.is_loading:
+                    await asyncio.sleep(0.1)
+                if self.model is None: return {}
+        
+        try:
+            # Zero-copy buffer interface if possible, else copy
+            audio_np = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
 
-        # Convert bytes to float32 numpy array
-        # Input is 16-bit PCM
-        audio_np = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
+            # Run transcription in thread
+            def _run_transcribe():
+                segments, info = self.model.transcribe(
+                    audio_np, 
+                    beam_size=1, # SOTA Latency
+                    language=language or "pt",
+                    initial_prompt=prompt,
+                    vad_filter=True, 
+                    vad_parameters=dict(min_silence_duration_ms=400, min_speech_duration_ms=250),
+                    condition_on_previous_text=False, # Avoid loop lock
+                    temperature=0.0,
+                    repetition_penalty=1.1
+                )
+                return list(segments), info
 
-        # Run transcription in thread
-        segments, info = await asyncio.get_running_loop().run_in_executor(
-            self.executor, 
-            lambda: self.model.transcribe(
-                audio_np, 
-                beam_size=5, 
-                language=language or "pt",
-                initial_prompt=prompt, # Context Injection
-                vad_filter=True, # Critical: Filter silence to prevent "Obrigado" hallucinations
-                vad_parameters=dict(min_silence_duration_ms=400, min_speech_duration_ms=250),
-                condition_on_previous_text=False, # Critical: Prevent loop/hallucination from context
-                temperature=0.0, # Greedy decoding for accuracy
-                word_timestamps=True, # Provide word timestamps for better segmentation
-                compression_ratio_threshold=2.0, # Stricter filter for repetitive loops
-                log_prob_threshold=-0.9, # Discard low confidence transcription
-                no_speech_threshold=0.4 # Higher confidence required to consider it speech (default is 0.6, lower is stricter?)
-            ) 
-        )
-        
-        # Collect result
-        # Note: model.transcribe returns a generator for segments. We need to iterate it.
-        # This blocks until full transcription of the chunk.
-        # For *real-time*, we usually need a streaming VAD + buffer approach (like Silero VAD).
-        # Simply processing chunks might split words.
-        # However, for a basic implementation, we can try.
-        
-        full_text = ""
-        seg_list = list(segments) # This executes the inference
-        
-        segments_data = []
-        for segment in seg_list:
-            full_text += segment.text
-            segments_data.append({
-                "text": segment.text.strip(),
-                "start": segment.start,
-                "end": segment.end
-            })
+            start_time = asyncio.get_running_loop().time()
+            segments_list, info = await asyncio.get_running_loop().run_in_executor(
+                self.executor, _run_transcribe
+            )
+            duration = (asyncio.get_running_loop().time() - start_time) * 1000
             
-        if not full_text.strip():
-            return {}
+            # Telemetry
+            if segments_list:
+                logger.debug(f"[WhisperService] Transcribed {len(audio_data)/32000:.2f}s in {duration:.2f}ms. Prompt: {prompt[:30]}...")
 
-        return {
-            "text": full_text.strip(),
-            "segments": segments_data,
-            "language": info.language,
-            "probability": info.language_probability
-        }
+            full_text = "".join([s.text for s in segments_list]).strip()
+            
+            return {
+                "text": full_text,
+                "language": info.language,
+                "probability": info.language_probability
+            }
+            
+        except Exception as e:
+            logger.error(f"Transcription error: {e}")
+            return {}
 
 _whisper_service = None
 

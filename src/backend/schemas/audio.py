@@ -1,32 +1,45 @@
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, model_validator, ConfigDict
 from typing import Optional, List, Any
+from enum import Enum
+
+# --- ENUMS (SOTA Validation) ---
+class AudioLanguage(str, Enum):
+    PT = "pt"
+    EN = "en"
+    ES = "es"
+    FR = "fr"
+
+class ServiceStatusEnum(str, Enum):
+    READY = "ready"
+    STREAMING = "streaming"
+    ERROR = "error"
+    OFFLINE = "offline"
+    UNKNOWN = "unknown"
 
 class StartStreamingRequest(BaseModel):
-    session_id: str = Field(alias="sessionId")
-    language: str = "pt"
-    microphone_device_id: Optional[str] = Field(default=None, alias="microphoneDeviceId")
-    system_device_id: Optional[str] = Field(default=None, alias="systemDeviceId")
-    company_name: Optional[str] = Field(default=None, alias="companyName")
-    project_name: Optional[str] = Field(default=None, alias="projectName")
-    keyterms: Optional[List[str]] = None
+    model_config = ConfigDict(populate_by_name=True)
+
+    session_id: str = Field(alias="sessionId", examples=["sess_12345"])
+    language: AudioLanguage = Field(default=AudioLanguage.PT, examples=["pt"])
+    microphone_device_id: Optional[str] = Field(default=None, alias="microphoneDeviceId", examples=["mic_default"])
+    system_device_id: Optional[str] = Field(default=None, alias="systemDeviceId", examples=["sys_default"])
+    company_name: Optional[str] = Field(default=None, alias="companyName", examples=["Acme Corp"])
+    project_name: Optional[str] = Field(default=None, alias="projectName", examples=["Project Alpha"])
+    keyterms: Optional[List[str]] = Field(default=None, examples=[["CRM", "SaaS"]])
     use_assemblyai: bool = Field(default=True, alias="useAssemblyAI")
 
-    class Config:
-        populate_by_name = True
-
 class StartTestRequest(BaseModel):
-    file_path: Optional[str] = Field(default=None, alias="filePath")
+    model_config = ConfigDict(populate_by_name=True)
+
+    file_path: Optional[str] = Field(default=None, alias="filePath", examples=["C:/audio/test.wav"])
     microphone_device_id: Optional[str] = Field(default=None, alias="microphoneDeviceId")
     system_device_id: Optional[str] = Field(default=None, alias="systemDeviceId")
     keyterms: Optional[List[str]] = None
     transcription_service: Optional[str] = Field(default="assemblyai", alias="transcription_service")
 
-    class Config:
-        populate_by_name = True
-
 
 class GainRequest(BaseModel):
-    gain: float
+    gain: float = Field(examples=[1.5])
 
 # --- RESPONSE MODELS (SOTA) ---
 class AudioDevice(BaseModel):
@@ -36,7 +49,9 @@ class AudioDevice(BaseModel):
     is_microphone: bool = True # Abstração: true se for input
 
 class AudioServiceStatus(BaseModel):
-    status: str = "unknown" # Default to unknown if missing
+    model_config = ConfigDict(populate_by_name=True)
+
+    status: ServiceStatusEnum = Field(default=ServiceStatusEnum.UNKNOWN)
     is_capturing: bool = Field(alias="isCapturing")
     active_session_id: Optional[str] = Field(default=None, alias="sessionId")
     detail: Optional[str] = None
@@ -47,12 +62,12 @@ class AudioServiceStatus(BaseModel):
     @classmethod
     def compute_status(cls, data: Any) -> Any:
         if isinstance(data, dict):
-            if "status" not in data:
+            if "status" not in data or data["status"] is None:
                 # Infer status from state
                 if data.get("isCapturing"):
-                    data["status"] = "streaming"
+                    data["status"] = ServiceStatusEnum.STREAMING.value
                 else:
-                    data["status"] = "ready"
+                    data["status"] = ServiceStatusEnum.READY.value
         return data
 
 class SimpleResponse(BaseModel):

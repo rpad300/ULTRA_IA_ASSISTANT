@@ -18,6 +18,9 @@ async def get_audio_client(request: Request) -> AudioServiceClient:
          raise HTTPException(status_code=503, detail="Audio System not initialized. Please checking server logs.")
     return request.app.state.audio_client
 
+# --- GLOBAL STATE ---
+_start_lock = asyncio.Lock()
+
 @router.get("/status", response_model=AudioServiceStatus)
 async def get_service_status(request: Request, client: AudioServiceClient = Depends(get_audio_client)):
     # Correlation ID is auto-extracted by client from Context
@@ -29,7 +32,7 @@ async def get_service_status(request: Request, client: AudioServiceClient = Depe
 @router.get("/devices", response_model=List[AudioDevice])
 async def get_devices(request: Request, client: AudioServiceClient = Depends(get_audio_client)):
     try:
-        logger.info("Fetching devices from Audio Service...")
+        logger.debug("Fetching devices from Audio Service...")
         return await client.get_devices()
     except Exception as e:
         _map_service_exceptions(e)
@@ -40,14 +43,22 @@ async def start_streaming(
     http_request: Request,
     client: AudioServiceClient = Depends(get_audio_client)
 ):
-    # SAFETY: Ensure Test Mode is disabled when starting a Real Session
-    if hasattr(http_request.app.state, "is_audio_test_active"):
-        http_request.app.state.is_audio_test_active = False
-    # SOTA: Keyterm resolution managed by "Smart Client"
-    try:
-        return await client.start_streaming_smart(request, api_key=ASSEMBLYAI_API_KEY)
-    except Exception as e:
-        _map_service_exceptions(e)
+    # SAFETY: Race Condition Protection
+    # Prevent double-clicking 'Start' from locking the driver
+    if _start_lock.locked():
+        # Fail fast or Wait? For UI feedback, Fail Fast is often better, or Wait.
+        # User suggested "Wait" with async lock context manager.
+        pass
+
+    async with _start_lock:
+        # SAFETY: Ensure Test Mode is disabled when starting a Real Session
+        if hasattr(http_request.app.state, "is_audio_test_active"):
+            http_request.app.state.is_audio_test_active = False
+        # SOTA: Keyterm resolution managed by "Smart Client"
+        try:
+            return await client.start_streaming_smart(request, api_key=ASSEMBLYAI_API_KEY)
+        except Exception as e:
+            _map_service_exceptions(e, context=f"Session={request.session_id}")
 
 @router.post("/stop", response_model=SimpleResponse)
 async def stop_streaming_api(
@@ -65,16 +76,17 @@ async def start_test_recording(
     client: AudioServiceClient = Depends(get_audio_client)
 ):
     """Start test with auto-recovery logic (Managed by Client)."""
-    try:
-        # Flag as Test Mode for Native Transcription Router
-        http_request.app.state.is_audio_test_active = True
-        
-        # Pass the full model dump with forced Session ID
-        payload = request.model_dump(by_alias=True)
-        payload["sessionId"] = "TEST_SESSION"
-        return await client.start_test_with_recovery(payload)
-    except Exception as e:
-        _map_service_exceptions(e)
+    async with _start_lock: # Also lock test start
+        try:
+            # Flag as Test Mode for Native Transcription Router
+            http_request.app.state.is_audio_test_active = True
+            
+            # Pass the full model dump with forced Session ID
+            payload = request.model_dump(by_alias=True)
+            payload["sessionId"] = "TEST_SESSION"
+            return await client.start_test_with_recovery(payload)
+        except Exception as e:
+            _map_service_exceptions(e, context="TEST_SESSION")
 
 @router.post("/gain", response_model=SimpleResponse)
 async def set_gain(
@@ -100,18 +112,23 @@ async def stop_test_recording(
     return {"status": "ok"}
 
 # --- EXCEPTION MAPPING ---
-def _map_service_exceptions(e: Exception):
+def _map_service_exceptions(e: Exception, context: str = None):
     """
     Translates internal Client/Service exceptions to HTTP Status Codes.
+    Context: Additional info for logs (Session ID, Contact ID).
     """
     from services.audio_service_client import DeviceBusyException, ServiceOfflineException
     
+    log_prefix = f"[{context}] " if context else ""
+    
     if isinstance(e, DeviceBusyException):
+        logger.warning(f"{log_prefix}Audio Device Busy: {e}")
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Audio device is busy. Please close other applications using the mic."
         )
     if isinstance(e, ServiceOfflineException):
+        logger.warning(f"{log_prefix}Audio Service Offline: {e}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Audio Service is offline. Please restart the backend."
@@ -122,7 +139,7 @@ def _map_service_exceptions(e: Exception):
         raise e
         
     # Generic Fallback
-    logger.error(f"Unhandled Audio Error: {e}")
+    logger.error(f"{log_prefix}Unhandled Audio Error: {e}", exc_info=True)
     raise HTTPException(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         detail="Internal Audio Error"

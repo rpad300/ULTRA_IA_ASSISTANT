@@ -5,6 +5,7 @@ echo [ULTRA OS] ========================================
 echo.
 
 echo [ULTRA OS] Stopping existing services...
+set PYTHONUTF8=1
 REM Stop all related processes more aggressively
 taskkill /F /IM node.exe /T 2>nul
 taskkill /F /IM python.exe /T 2>nul
@@ -37,22 +38,29 @@ if not exist .venv (
     python -m venv .venv
     .venv\Scripts\python -m pip install -r requirements.txt --quiet
 )
-start "Ultra Backend" /min cmd /c "cd /d %~dp0src\backend && .venv\Scripts\python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000"
+set "PATH=C:\Users\rdias\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.0.1-full_build\bin;%PATH%"
+start "Ultra Backend" /min cmd /k "cd /d %~dp0src\backend && .venv\Scripts\python run_backend.py"
 cd ..\..
 
-echo [2/5] Starting Frontend (Port 5999)...
-start "Ultra Frontend" /min cmd /c "cd /d %~dp0src\frontend && npm run dev"
+echo [2/5] Waiting for Backend to be ready...
+"%~dp0src\backend\.venv\Scripts\python" "%~dp0scripts\wait_for_service.py" http://localhost:8000/api/health --timeout 90 --name "Ultra Backend"
+if errorlevel 1 (
+    echo [ULTRA OS] ERROR: Backend failed to start! Stopping...
+    pause
+    exit /b 1
+)
 
-echo [3/5] Waiting for services to initialize (5s)...
-timeout /t 5 /nobreak >nul
-
-echo [4/5] Starting Audio Streaming Service (C#)...
+echo [3/5] Starting Audio Streaming Service (C#)...
 call "%~dp0scripts\start_audio_service.bat"
 
 :audio_done
 
-echo [5/5] Waiting for audio service (3s)...
-timeout /t 3 /nobreak >nul
+echo [4/5] Waiting for Audio Service to be ready...
+"%~dp0src\backend\.venv\Scripts\python" "%~dp0scripts\wait_for_service.py" http://localhost:8001/api/audio-service/status --timeout 30 --name "Audio Service"
+
+echo [5/5] Starting Frontend (Port 5999)...
+set "PATH=C:\Program Files\nodejs;%PATH%"
+start "Ultra Frontend" cmd /k "cd /d %~dp0src\frontend && npm run dev"
 
 echo.
 echo [ULTRA OS] Launching Electron Shell...

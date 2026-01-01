@@ -2,7 +2,7 @@ import httpx
 import logging
 import asyncio
 from typing import Any, Dict, Optional, List, Type, TypeVar, Union
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
@@ -38,12 +38,12 @@ class CircuitBreaker:
         self.state = "CLOSED" # CLOSED, OPEN, HALF-OPEN
         self.last_failure_time: Optional[datetime] = None
 
-    def record_failure(self):
+    def record_failure(self, reason: str = "unknown"):
         self.failures += 1
         if self.failures >= self.failure_threshold:
             self.state = "OPEN"
-            self.last_failure_time = datetime.utcnow()
-            logger.warning(f"Circuit Breaker OPENED after {self.failures} failures.")
+            self.last_failure_time = datetime.now(timezone.utc)
+            logger.error(f"Circuit Breaker OPENED after {self.failures} failures. Reason: {reason}")
 
     def record_success(self):
         if self.state != "CLOSED":
@@ -56,7 +56,7 @@ class CircuitBreaker:
             return False
         
         if self.state == "OPEN":
-            if datetime.utcnow() - self.last_failure_time > timedelta(seconds=self.recovery_timeout):
+            if datetime.now(timezone.utc) - self.last_failure_time > timedelta(seconds=self.recovery_timeout):
                 self.state = "HALF-OPEN"
                 logger.info("Circuit Breaker HALF-OPEN (Testing connection).")
                 return False # Allow one request through
@@ -72,12 +72,21 @@ class AudioServiceClient:
         self.circuit_breaker = CircuitBreaker()
         self._health_check_task: Optional[asyncio.Task] = None
         self.last_known_status: str = "unknown"
+        # SOTA: Concurrency Lock to prevent race conditions on hardware access
+        self._start_lock = asyncio.Lock()
 
-    async def start(self):
-        """Initialize resources and background monitoring."""
-        logger.info(f"Initializing Audio Service Client (SOTA) at {self.base_url}")
-        self.client = httpx.AsyncClient(base_url=self.base_url, timeout=10.0)
-        self._health_check_task = asyncio.create_task(self._health_monitor_loop())
+    async def start(self, enable_monitor: bool = False):
+        """
+        Initialize resources.
+        :param enable_monitor: If True, starts background health check loop. 
+                               Default False to respect user privacy/passive mode.
+        """
+        logger.info(f"Initializing Audio Service Client (SOTA) at {self.base_url} [Monitor={enable_monitor}]")
+        # SOTA: Short timeout (5s) avoids hanging on unstable drivers
+        self.client = httpx.AsyncClient(base_url=self.base_url, timeout=5.0)
+        
+        if enable_monitor:
+            self._health_check_task = asyncio.create_task(self._health_monitor_loop())
 
     async def stop(self):
         """Cleanup resources."""
@@ -107,11 +116,11 @@ class AudioServiceClient:
                             self.last_known_status = "online"
                         else:
                             self.last_known_status = "error"
-                    except Exception:
+                    except Exception as e:
                         self.last_known_status = "offline"
                         # Don't trip circuit breaker on background ping to avoid locking user actions excessively?
                         # Or DO trip it? better to trip it.
-                        self.circuit_breaker.record_failure()
+                        self.circuit_breaker.record_failure(reason=f"Health Check: {e}")
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -146,7 +155,7 @@ class AudioServiceClient:
 
         try:
             # SOTA: Reduce noise for high-frequency status checks
-            is_start_status = path in ["/status", "/health"]
+            is_start_status = path in ["/status", "/health", "/devices"]
             if not is_start_status:
                 logger.debug(f"Starting Audio Service Request: {method} {path}")
             
@@ -176,8 +185,8 @@ class AudioServiceClient:
                 return response_model.model_validate(json_data)
             return json_data
 
-        except (httpx.ConnectError, httpx.TimeoutException):
-            self.circuit_breaker.record_failure()
+        except (httpx.ConnectError, httpx.TimeoutException) as e:
+            self.circuit_breaker.record_failure(reason=str(e))
             self.last_known_status = "offline"
             raise ServiceOfflineException()
             
@@ -221,44 +230,59 @@ class AudioServiceClient:
         2. Starts streaming.
         """
         # 1. Resolve Keyterms (CPU/DB bound protection)
-        keyterms = []
-        if request_data.company_name or request_data.project_name:
-             # Run heavy logic in executor to protect event loop
-             import asyncio
-             from services.assemblyai_service import get_assemblyai_service
+        # SOTA: Wrapped in lock to prevent parallel start requests to hardware
+        async with self._start_lock:
+             keyterms = []
+             if request_data.company_name or request_data.project_name:
+                  # Run heavy logic in executor to protect event loop
+                  import asyncio
+                  from services.assemblyai_service import get_assemblyai_service
+                  
+                  def _resolve():
+                      try:
+                          svc = get_assemblyai_service()
+                          return svc.get_smart_word_boost(
+                             company_name=request_data.company_name,
+                             project_name=request_data.project_name
+                          )
+                      except Exception as e:
+                          logger.warning(f"Smart Keyterm resolution failed: {e}")
+                          return []
+                 
+                  keyterms = await asyncio.to_thread(_resolve)
+                  
+             # Merge manual + smart keyterms
+             final_keyterms = (request_data.keyterms or []) + keyterms
              
-             def _resolve():
-                 try:
-                     svc = get_assemblyai_service()
-                     return svc.get_smart_word_boost(
-                        company_name=request_data.company_name,
-                        project_name=request_data.project_name
-                     )
-                 except Exception as e:
-                     logger.warning(f"Smart Keyterm resolution failed: {e}")
-                     return []
-            
-             keyterms = await asyncio.to_thread(_resolve)
+             payload = {
+                 "apiKey": api_key,
+                 "sessionId": request_data.session_id,
+                 "language": request_data.language,
+                 "keyterms": final_keyterms,
+                 "microphoneDeviceId": request_data.microphone_device_id,
+                 "systemDeviceId": request_data.system_device_id,
+                 "useAssemblyAI": request_data.use_assemblyai
+             }
              
-        # Merge manual + smart keyterms
-        final_keyterms = (request_data.keyterms or []) + keyterms
-        
-        payload = {
-            "apiKey": api_key,
-            "sessionId": request_data.session_id,
-            "language": request_data.language,
-            "keyterms": final_keyterms,
-            "microphoneDeviceId": request_data.microphone_device_id,
-            "systemDeviceId": request_data.system_device_id,
-            "useAssemblyAI": request_data.use_assemblyai
-        }
-        
-        return await self._request(
-            "POST", 
-            "/start", 
-            data=payload, 
-            response_model=SimpleResponse
-        )
+             try:
+                 return await self._request(
+                     "POST", 
+                     "/start", 
+                     data=payload, 
+                     response_model=SimpleResponse
+                 )
+             except DeviceBusyException:
+                 logger.warning("Audio Device BUSY during Smart Start. Initiating Self-Healing (Force Reset)...")
+                 await self.force_reset()
+                 # Brief cool-down for hardware release
+                 await asyncio.sleep(0.5)
+                 # Retry Once
+                 return await self._request(
+                     "POST", 
+                     "/start", 
+                     data=payload, 
+                     response_model=SimpleResponse
+                 )
 
     async def stop_streaming(self) -> SimpleResponse:
         """Call C# service to stop streaming."""
@@ -281,25 +305,26 @@ class AudioServiceClient:
         """
         Starts test recording with SOTA Self-Healing (Auto-Reset on Busy).
         """
-        try:
-            return await self._request(
-                "POST", 
-                "/test/start", 
-                data=payload, 
-                response_model=SimpleResponse
-            )
-        except DeviceBusyException:
-            logger.warning("Audio Device BUSY. Initiating Self-Healing (Force Reset)...")
-            await self.force_reset()
-            # Brief cool-down for hardware release
-            await asyncio.sleep(0.5)
-            # Retry Once
-            return await self._request(
-                "POST", 
-                "/test/start", 
-                data=payload, 
-                response_model=SimpleResponse
-            )
+        async with self._start_lock:
+            try:
+                return await self._request(
+                    "POST", 
+                    "/test/start", 
+                    data=payload, 
+                    response_model=SimpleResponse
+                )
+            except DeviceBusyException:
+                logger.warning("Audio Device BUSY. Initiating Self-Healing (Force Reset)...")
+                await self.force_reset()
+                # Brief cool-down for hardware release
+                await asyncio.sleep(0.5)
+                # Retry Once
+                return await self._request(
+                    "POST", 
+                    "/test/start", 
+                    data=payload, 
+                    response_model=SimpleResponse
+                )
 
     async def force_reset(self, correlation_id: str = None):
         """Tenta parar qualquer gravação pendente."""

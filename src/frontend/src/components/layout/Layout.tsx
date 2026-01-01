@@ -33,12 +33,12 @@ export function Layout({ children }: LayoutProps) {
                     <div className={cn(
                         "flex-1 flex flex-col min-w-0",
                         isLiveSession
-                            ? "min-h-0 overflow-hidden" // Live View: Locked (internal scrolling)
+                            ? "overflow-y-auto overflow-x-hidden" // Live View: Scrollable (Dynamic Growth)
                             : "overflow-y-auto overflow-x-auto" // Standard props: Scrollable
                     )}>
                         <div className={cn(
                             "flex-1 w-full",
-                            isLiveSession ? "h-full" : "p-4 md:p-6" // Apply padding only for non-live
+                            isLiveSession ? "min-h-full" : "p-4 md:p-6" // Apply padding only for non-live
                         )}>
                             {children}
                         </div>

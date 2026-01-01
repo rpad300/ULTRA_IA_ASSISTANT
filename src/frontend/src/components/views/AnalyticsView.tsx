@@ -5,12 +5,18 @@ import { workspaceApi } from "@/api/client";
 import { useWorkspaceStore } from "@/store/workspaceStore";
 
 export function AnalyticsView() {
-    const { selectedCompanyId, selectedProjectId } = useWorkspaceStore();
+    // SOTA: Strict Selectors
+    const selectedCompanyId = useWorkspaceStore(state => state.selectedCompanyId);
+    const selectedProjectId = useWorkspaceStore(state => state.selectedProjectId);
+
     const [meetingsData, setMeetingsData] = useState<any>(null);
     const [tasksData, setTasksData] = useState<any>(null);
     const [isLoading, setIsLoading] = useState(true);
-    
+
     useEffect(() => {
+        const controller = new AbortController();
+        const signal = controller.signal;
+
         const loadAnalytics = async () => {
             setIsLoading(true);
             try {
@@ -18,24 +24,35 @@ export function AnalyticsView() {
                 if (selectedCompanyId) params.append('company_id', selectedCompanyId);
                 if (selectedProjectId) params.append('project_id', selectedProjectId);
                 params.append('days', '30');
-                
-                // Load meetings insights
-                const meetingsRes = await workspaceApi.get(`/analytics/insights/meetings?${params}`);
-                setMeetingsData(meetingsRes.data);
-                
-                // Load tasks insights
-                const tasksRes = await workspaceApi.get(`/analytics/insights/tasks?${params}`);
-                setTasksData(tasksRes.data);
+
+                // Parallel fetch with cancellation check
+                const [meetingsRes, tasksRes] = await Promise.all([
+                    workspaceApi.get(`/analytics/insights/meetings?${params}`),
+                    workspaceApi.get(`/analytics/insights/tasks?${params}`)
+                ]);
+
+                if (!signal.aborted) {
+                    setMeetingsData(meetingsRes.data);
+                    setTasksData(tasksRes.data);
+                }
             } catch (error) {
-                console.error("Failed to load analytics:", error);
+                if (!signal.aborted) {
+                    console.error("Failed to load analytics:", error);
+                }
             } finally {
-                setIsLoading(false);
+                if (!signal.aborted) {
+                    setIsLoading(false);
+                }
             }
         };
-        
+
         loadAnalytics();
+
+        return () => {
+            controller.abort();
+        };
     }, [selectedCompanyId, selectedProjectId]);
-    
+
     if (isLoading) {
         return (
             <div className="flex items-center justify-center h-64">
@@ -43,7 +60,7 @@ export function AnalyticsView() {
             </div>
         );
     }
-    
+
     const stats = {
         totalMeetings: meetingsData?.total_meetings || 0,
         totalHours: meetingsData?.total_hours || 0,
@@ -51,22 +68,22 @@ export function AnalyticsView() {
         tasksCompleted: tasksData?.completed || 0,
         completionRate: tasksData ? Math.round(tasksData.completion_rate * 100) : 0,
     };
-    
+
     const trends = [
-        { 
-            label: "Meetings this week", 
-            value: meetingsData?.weekly_stats?.this_week || 0, 
-            positive: meetingsData?.weekly_stats?.trend === 'up' 
+        {
+            label: "Meetings this week",
+            value: meetingsData?.weekly_stats?.this_week || 0,
+            positive: meetingsData?.weekly_stats?.trend === 'up'
         },
-        { 
-            label: "Task completion", 
-            value: `${stats.completionRate}%`, 
-            positive: stats.completionRate >= 80 
+        {
+            label: "Task completion",
+            value: `${stats.completionRate}%`,
+            positive: stats.completionRate >= 80
         },
-        { 
-            label: "Talk time ratio", 
-            value: "N/A", 
-            positive: null 
+        {
+            label: "Talk time ratio",
+            value: "N/A",
+            positive: null
         },
     ];
 

@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { API_BASE_URL } from '@/config/api';
+import { API_BASE_URL, AUDIO_SERVICE_BASE_URL } from '@/config/api';
 
 // Create axios instance with centralized configuration
 export const api = axios.create({
@@ -10,6 +10,15 @@ export const api = axios.create({
     timeout: 30000, // 30 seconds timeout
 });
 
+// SOTA: Local Hardware Control API (Direct Connection to C# Service)
+export const localAudioApi = axios.create({
+    baseURL: AUDIO_SERVICE_BASE_URL,
+    headers: {
+        'Content-Type': 'application/json',
+    },
+    timeout: 5000, // Fast timeout for local hardware
+});
+
 // Request interceptor for adding auth tokens, etc.
 api.interceptors.request.use(
     (config) => {
@@ -18,6 +27,23 @@ api.interceptors.request.use(
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;
         }
+
+        // SOTA: Inject X-Company-ID for Multi-Tenancy
+        // We read directly from localStorage to avoid circular dependency with store
+        // Zustand persist default key is 'workspace-storage'
+        try {
+            const storageItem = localStorage.getItem('workspace-storage');
+            if (storageItem) {
+                const parsed = JSON.parse(storageItem);
+                const companyId = parsed.state?.selectedCompanyId;
+                if (companyId) {
+                    config.headers['X-Company-ID'] = companyId;
+                }
+            }
+        } catch (e) {
+            console.warn("Failed to inject X-Company-ID:", e);
+        }
+
         // Debug logging
         console.log(`[API Request] ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`, config);
         return config;
@@ -31,6 +57,12 @@ api.interceptors.request.use(
 // Response interceptor for error handling
 api.interceptors.response.use(
     (response) => {
+        // SOTA: Log Latency if provided
+        const processTime = response.headers['x-process-time'];
+        if (processTime) {
+            console.debug(`[Telemetry] Request took ${processTime}s`);
+        }
+
         console.log(`[API Response] ${response.config.method?.toUpperCase()} ${response.config.url} - ${response.status}`);
         return response;
     },
@@ -41,11 +73,15 @@ api.interceptors.response.use(
         // Debug logging
         if (error.response) {
             if (!isAudioService503) {
-                console.error(`[API Error] ${error.config?.method?.toUpperCase()} ${error.config?.url} - ${error.response.status}`, {
-                    status: error.response.status,
-                    statusText: error.response.statusText,
-                    data: error.response.data,
-                    headers: error.response.headers
+                // SOTA: Structured Error Logging
+                const errorBody = error.response.data;
+                const traceId = error.response.headers['x-request-id'] || 'unknown';
+
+                console.error(`[API Error ${error.response.status}] TraceID: ${traceId}`, {
+                    url: error.config?.url,
+                    message: errorBody?.detail || errorBody?.message || "Unknown error",
+                    code: errorBody?.error?.code,
+                    full: errorBody
                 });
             }
         } else {
@@ -57,11 +93,6 @@ api.interceptors.response.use(
             // Clear token and redirect
             localStorage.removeItem('auth_token');
             // Could dispatch event or use router here
-        }
-
-        // Handle network errors
-        if (!error.response) {
-            console.error('Network error:', error.message);
         }
 
         return Promise.reject(error);
@@ -108,6 +139,35 @@ export interface Message {
     role: 'user' | 'assistant';
     content: string;
     created_at: string;
+}
+
+
+export interface Profile {
+    id: string;
+    name: string;
+    type: string;
+    base_prompt?: string;
+
+    // SOTA 2025
+    instructions?: {
+        role?: string;
+        mission?: string;
+        tone?: string;
+        focus_areas?: string[];
+        forbidden_topics?: string[];
+        [key: string]: any;
+    };
+    capabilities?: string[];
+    knowledge_sources?: string[];
+    few_shot_examples?: Array<{ input: string; output: string }>;
+    response_format?: string;
+    icon?: string;
+    color?: string;
+
+    company_id: string;
+    project_id?: string;
+    created_at: string;
+    updated_at: string;
 }
 
 export interface Session {
@@ -182,6 +242,9 @@ export const workspaceApi = {
     deleteCompany: async (id: string) => {
         await api.delete(`/companies/${id}`);
     },
+    deleteCompanyPermanent: async (id: string) => {
+        await api.delete(`/companies/${id}/permanent`);
+    },
     getProjects: async (companyId: string) => {
         const res = await api.get<Project[]>(`/companies/${companyId}/projects`);
         return res.data;
@@ -206,6 +269,23 @@ export const workspaceApi = {
     },
     getProjectFiles: async (projectId: string) => {
         const res = await api.get<any[]>(`/projects/${projectId}/files`);
+        return res.data;
+    },
+    // SOTA 2025: Real-time Agent Preview
+    previewProfile: async (profileId: string, message: string, projectId?: string) => {
+        const res = await api.post<{ response: string; system_instruction?: string }>(`/profiles/${profileId}/preview`, {
+            input: message,
+            project_id: projectId
+        });
+        return res.data;
+    },
+    // SOTA 2025: Recursive Tree/Browse
+    getProjectFilesTree: async (projectId: string, refresh = false) => {
+        const res = await api.get<any[]>(`/projects/${projectId}/files/tree?refresh=${refresh}`);
+        return res.data;
+    },
+    browseProjectFolder: async (projectId: string, folderId: string, refresh = false) => {
+        const res = await api.get<any[]>(`/projects/${projectId}/folders/browse?folder_id=${folderId}&refresh=${refresh}`);
         return res.data;
     },
     getSessionAudioUrl: (sessionId: string) => {
@@ -246,6 +326,11 @@ export const workspaceApi = {
             throw error;
         }
     },
+    /**
+     * SOTA: Fetch all profiles (agents) for a specific company.
+     * Replaces the legacy `getCompanyProfiles` to ensure consistent type safety.
+     * @param companyId The ID of the company workspace.
+     */
     getProfiles: async (companyId: string) => {
         const res = await api.get<Array<{ id: string; name: string; type: string; base_prompt?: string; company_id: string; created_at: string; updated_at: string }>>(`/companies/${companyId}/profiles`);
         return res.data;
@@ -289,6 +374,9 @@ export const workspaceApi = {
         const res = await api.get<Session>(`/sessions/${sessionId}`);
         return res.data;
     },
+    deleteSession: async (sessionId: string) => {
+        await api.delete(`/sessions/${sessionId}`);
+    },
     // Contacts API
     getContacts: async () => {
         const res = await api.get<PaginatedResponse<Contact>>('/contacts');
@@ -309,6 +397,20 @@ export const workspaceApi = {
     },
     deleteContact: async (id: string) => {
         await api.delete(`/contacts/${id}`);
+    },
+    assignGuest: async (contactId: string, guestId: string, sessionId: string) => {
+        const res = await api.post<{ status: string; message: string }>(`/contacts/${contactId}/assign_guest`, {
+            guest_id: guestId,
+            session_id: sessionId
+        });
+        return res.data;
+    },
+    promoteGuest: async (contactId: string, guestId: string, sessionId: string) => {
+        const res = await api.post<{ status: string; message: string }>(`/voice-profiles/${contactId}/promote-guest`, {
+            guest_id: guestId,
+            session_id: sessionId
+        });
+        return res.data;
     },
     // Analytics
     get: async <T = any>(url: string) => {
@@ -362,6 +464,29 @@ export const workspaceApi = {
         const res = await api.post<{ status: string; message: string }>('/auth/drive/connect');
         return res.data;
     },
+    // Oracle Brain API
+    getGraphVisualization: async (companyId: string) => {
+        const res = await api.get<any>(`/graph/${companyId}/visualize`);
+        return res.data;
+    },
+    queryOracle: async (companyId: string, query: string, mode: string = "hybrid") => {
+        const res = await api.get<string>(`/graph/${companyId}/query`, { params: { query, mode } });
+        return res.data;
+    },
+    // SOTA: Real Intelligence Endpoints
+    getSessionTranscript: async (sessionId: string) => {
+        // Fetches full transcript blocks
+        const res = await api.get<any[]>(`/sessions/${sessionId}/transcript`);
+        return res.data;
+    },
+    generateSessionPrep: async (sessionId: string) => {
+        const res = await api.post<any>(`/sessions/${sessionId}/prep`);
+        return res.data;
+    },
+    analyzeSentimentBatch: async (text: string) => {
+        const res = await api.post<{ sentiment: 'positive' | 'neutral' | 'negative', score: number }>('/intelligence/sentiment', { text });
+        return res.data;
+    }
 };
 
 // Audio Service Control API (C# Service)
@@ -400,12 +525,15 @@ export interface AudioDevicesResponse {
 }
 
 export const audioServiceApi = {
+    // Uses LOCAL SERVICE (Hardware)
     getStatus: async (): Promise<AudioServiceStatus> => {
-        const res = await api.get<AudioServiceStatus>('/audio-service/status');
+        // Direct to Local
+        const res = await localAudioApi.get<AudioServiceStatus>('/status');
         return res.data;
     },
     startStreaming: async (systemDeviceId?: string, microphoneDeviceId?: string, keyterms?: string[], sessionId?: string, useAssemblyAI: boolean = true): Promise<{ success: boolean; message: string }> => {
-        const res = await api.post<{ success: boolean; message: string }>('/audio-service/start', {
+        // Direct to Local
+        const res = await localAudioApi.post<{ success: boolean; message: string }>('/start', {
             systemDeviceId: (systemDeviceId === 'default') ? null : (systemDeviceId || null),
             microphoneDeviceId: (microphoneDeviceId === 'default') ? null : (microphoneDeviceId || null),
             keyterms: keyterms || null,
@@ -415,12 +543,13 @@ export const audioServiceApi = {
         return res.data;
     },
     stopStreaming: async (): Promise<{ success: boolean; message: string }> => {
-        const res = await api.post<{ success: boolean; message: string }>('/audio-service/stop');
+        // Direct to Local
+        const res = await localAudioApi.post<{ success: boolean; message: string }>('/stop');
         return res.data;
     },
     getDevices: async (): Promise<{ devices: AudioDevicesResponse }> => {
-        // Backend returns List[AudioDevice]. We need to map it to { devices: { microphones: [], speakers: [] } }
-        const res = await api.get<AudioDevice[]>('/audio-service/devices');
+        // Direct to Local
+        const res = await localAudioApi.get<AudioDevice[]>('/devices');
 
         const allDevices = res.data || [];
         // Map to expected structure
@@ -433,13 +562,15 @@ export const audioServiceApi = {
         return { devices };
     },
     setDevice: async (deviceId: string): Promise<{ success: boolean; deviceId: string }> => {
-        const res = await api.put<{ success: boolean; deviceId: string }>('/audio-service/device', {
+        // Direct to Local
+        const res = await localAudioApi.put<{ success: boolean; deviceId: string }>('/device', {
             deviceId
         });
         return res.data;
     },
     startTestRecording: async (filePath?: string | null, microphoneDeviceId?: string | null, systemDeviceId?: string | null, keyterms?: string[], transcriptionService?: string): Promise<{ success: boolean; path: string; message: string; sessionId?: string }> => {
-        const res = await api.post<{ success: boolean; path: string; message: string; sessionId?: string }>('/audio-service/test/start', {
+        // Direct to Local
+        const res = await localAudioApi.post<{ success: boolean; path: string; message: string; sessionId?: string }>('/test/start', {
             filePath: filePath || null,
             microphoneDeviceId: (microphoneDeviceId === 'default') ? null : (microphoneDeviceId || null),
             systemDeviceId: (systemDeviceId === 'default') ? null : (systemDeviceId || null),
@@ -449,13 +580,16 @@ export const audioServiceApi = {
         return res.data;
     },
     stopTestRecording: async (): Promise<{ success: boolean; message: string }> => {
-        const res = await api.post<{ success: boolean; message: string }>('/audio-service/test/stop');
+        // Direct to Local
+        const res = await localAudioApi.post<{ success: boolean; message: string }>('/test/stop');
         return res.data;
     },
     setGain: async (gain: number): Promise<{ success: boolean; message: string }> => {
-        const res = await api.post<{ success: boolean; message: string }>('/audio-service/gain', { gain });
+        // Direct to Local
+        const res = await localAudioApi.post<{ success: boolean; message: string }>('/gain', { gain });
         return res.data;
     },
+    // Brain / Backend Functions (Keep on main API)
     enrollNative: async (contactId: string, filePath: string, transcript?: string): Promise<any> => {
         const res = await api.post<any>(`/voice-profiles/enroll-native/${contactId}`, {
             file_path: filePath,

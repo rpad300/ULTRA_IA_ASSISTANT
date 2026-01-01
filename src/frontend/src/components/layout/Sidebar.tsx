@@ -9,26 +9,44 @@ import { workspaceApi } from "@/api/client"
 
 export function Sidebar() {
     const location = useLocation();
-    const { selectedCompanyId, selectedProjectId } = useWorkspaceStore();
+
+    // SOTA: Strict Selectors
+    const selectedCompanyId = useWorkspaceStore(state => state.selectedCompanyId);
+    const selectedProjectId = useWorkspaceStore(state => state.selectedProjectId);
 
     const [taskCount, setTaskCount] = useState(0);
     const [upcomingMeetings, setUpcomingMeetings] = useState(0);
-    
+
     useEffect(() => {
+        if (!selectedCompanyId) return;
+
+        const controller = new AbortController();
+        const signal = controller.signal;
+
         const loadCounts = async () => {
             try {
-                if (selectedCompanyId) {
-                    const tasksRes = await workspaceApi.getTasks({ company_id: selectedCompanyId, status: "open" });
+                // Parallel fetch for badges
+                const [tasksRes, scheduleRes] = await Promise.all([
+                    workspaceApi.getTasks({ company_id: selectedCompanyId, status: "open" }),
+                    workspaceApi.get(`/analytics/dashboard/today-schedule?company_id=${selectedCompanyId}`)
+                ]);
+
+                if (!signal.aborted) {
                     setTaskCount(tasksRes.length);
-                    
-                    const scheduleRes = await workspaceApi.get(`/analytics/dashboard/today-schedule?company_id=${selectedCompanyId}`);
                     setUpcomingMeetings(scheduleRes.data?.length || 0);
                 }
             } catch (error) {
-                console.error("Failed to load counts:", error);
+                if (!signal.aborted) {
+                    console.error("Failed to load counts:", error);
+                }
             }
         };
+
         loadCounts();
+
+        return () => {
+            controller.abort();
+        };
     }, [selectedCompanyId]);
 
     const mainNav = [
@@ -114,22 +132,22 @@ export function Sidebar() {
 
             {/* Navigation */}
             <div className="flex-1 py-4 px-2 space-y-6 overflow-y-auto">
-                
+
                 {/* Main Group */}
                 <div className="space-y-1">
                     {mainNav.map((item) => {
-                        const isActive = item.exact 
+                        const isActive = item.exact
                             ? location.pathname === item.path
                             : location.pathname.startsWith(item.path);
-                            
+
                         return (
                             <Link key={item.label} to={item.enabled ? item.path : "#"}>
                                 <Button
                                     variant="ghost"
                                     className={cn(
                                         "w-full justify-start h-9 px-2 gap-3 font-normal",
-                                        isActive 
-                                            ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium" 
+                                        isActive
+                                            ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
                                             : "text-muted-foreground hover:text-foreground",
                                         !item.enabled && "opacity-40 cursor-not-allowed hover:bg-transparent hover:text-muted-foreground"
                                     )}
@@ -150,20 +168,20 @@ export function Sidebar() {
 
                 {/* Workspace Group */}
                 <div className="space-y-1">
-                     <div className="text-[10px] font-semibold tracking-wider text-muted-foreground/70 px-2 mb-2 uppercase">
+                    <div className="text-[10px] font-semibold tracking-wider text-muted-foreground/70 px-2 mb-2 uppercase">
                         Active Workspace
                     </div>
                     {workspaceNav.map((item) => {
                         const isActive = location.pathname.startsWith(item.path) && item.path !== "/";
-                            
+
                         return (
                             <Link key={item.label} to={item.enabled ? item.path : "#"}>
                                 <Button
                                     variant="ghost"
                                     className={cn(
                                         "w-full justify-start h-9 px-2 gap-3 font-normal",
-                                        isActive 
-                                            ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium" 
+                                        isActive
+                                            ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
                                             : "text-muted-foreground hover:text-foreground",
                                         !item.enabled && "opacity-40 cursor-not-allowed hover:bg-transparent hover:text-muted-foreground"
                                     )}

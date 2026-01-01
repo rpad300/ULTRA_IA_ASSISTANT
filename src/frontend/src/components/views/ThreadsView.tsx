@@ -13,15 +13,15 @@ import { useDebounce } from "@/hooks/useDebounce";
 import { Skeleton } from "@/components/ui/skeleton";
 
 // Memoized Thread Card Component
-const ThreadCard = memo(({ 
-    thread, 
-    index, 
-    onSelect, 
-    getStatusColor, 
-    getSessionCount 
-}: { 
-    thread: Thread; 
-    index: number; 
+const ThreadCard = memo(({
+    thread,
+    index,
+    onSelect,
+    getStatusColor,
+    getSessionCount
+}: {
+    thread: Thread;
+    index: number;
     onSelect: (id: string) => void;
     getStatusColor: (status: string) => string;
     getSessionCount: (id: string) => number;
@@ -55,8 +55,8 @@ const ThreadCard = memo(({
                             <h4 className="font-semibold text-base group-hover:text-primary transition-colors truncate">
                                 {thread.title}
                             </h4>
-                            <Badge 
-                                variant="outline" 
+                            <Badge
+                                variant="outline"
                                 className={cn("text-xs shrink-0 transition-all", getStatusColor(thread.status))}
                             >
                                 {thread.status}
@@ -98,13 +98,13 @@ ThreadCard.displayName = "ThreadCard";
 export function ThreadsView() {
     const navigate = useNavigate();
     const { projectId } = useParams();
-    const {
-        threads,
-        selectProject,
-        fetchThreads,
-        fetchProject,
-        isLoading
-    } = useWorkspaceStore();
+
+    // SOTA: Strict Selectors
+    const threads = useWorkspaceStore(state => state.threads);
+    const selectProject = useWorkspaceStore(state => state.selectProject);
+    const fetchThreads = useWorkspaceStore(state => state.fetchThreads);
+    const fetchProject = useWorkspaceStore(state => state.fetchProject);
+    const isLoading = useWorkspaceStore(state => state.isLoading);
 
     const [currentProject, setCurrentProject] = useState<Project | null>(null);
     const [isFormOpen, setIsFormOpen] = useState(false);
@@ -115,11 +115,27 @@ export function ThreadsView() {
     const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
     useEffect(() => {
-        if (projectId) {
-            selectProject(projectId);
-            fetchThreads(projectId);
-            fetchProject(projectId).then(p => setCurrentProject(p));
-        }
+        if (!projectId) return;
+
+        const controller = new AbortController();
+        const signal = controller.signal;
+
+        selectProject(projectId);
+
+        const loadWrapper = async () => {
+            await Promise.all([
+                fetchThreads(projectId),
+                fetchProject(projectId).then(p => {
+                    if (!signal.aborted) setCurrentProject(p);
+                })
+            ]);
+        };
+
+        loadWrapper();
+
+        return () => {
+            controller.abort();
+        };
     }, [projectId, fetchThreads, selectProject, fetchProject]);
 
     const handleSelectThread = useCallback((threadId: string) => {
@@ -151,12 +167,12 @@ export function ThreadsView() {
             if (statusFilter !== "all" && thread.status !== statusFilter) {
                 return false;
             }
-            
+
             // Profile filter
             if (profileFilter !== "all" && thread.profiles?.name !== profileFilter) {
                 return false;
             }
-            
+
             // Search filter
             if (debouncedSearchQuery) {
                 const query = debouncedSearchQuery.toLowerCase();
@@ -165,7 +181,7 @@ export function ThreadsView() {
                     thread.description?.toLowerCase().includes(query)
                 );
             }
-            
+
             return true;
         });
     }, [threads, statusFilter, profileFilter, debouncedSearchQuery]);
@@ -184,25 +200,46 @@ export function ThreadsView() {
     }, []);
 
     const [sessionCounts, setSessionCounts] = useState<Record<string, number>>({});
-    
+
     useEffect(() => {
+        if (threads.length === 0) return;
+
+        const controller = new AbortController();
+        const signal = controller.signal;
+
         const loadSessionCounts = async () => {
             const counts: Record<string, number> = {};
-            for (const thread of threads) {
+            // Parallelize limits to prevent waterfall, but usually limit concurrency in real app.
+            // For now, we just check abort signal.
+
+            const promises = threads.map(async (thread) => {
+                if (signal.aborted) return;
                 try {
                     const res = await workspaceApi.get(`/sessions?thread_id=${thread.id}`);
-                    counts[thread.id] = res.data?.length || 0;
+                    if (!signal.aborted) {
+                        counts[thread.id] = res.data?.length || 0;
+                    }
                 } catch {
-                    counts[thread.id] = 0;
+                    if (!signal.aborted) {
+                        counts[thread.id] = 0;
+                    }
                 }
+            });
+
+            await Promise.all(promises);
+
+            if (!signal.aborted) {
+                setSessionCounts(counts);
             }
-            setSessionCounts(counts);
         };
-        if (threads.length > 0) {
-            loadSessionCounts();
-        }
+
+        loadSessionCounts();
+
+        return () => {
+            controller.abort();
+        };
     }, [threads]);
-    
+
     const getSessionCount = useCallback((threadId: string) => {
         return sessionCounts[threadId] || 0;
     }, [sessionCounts]);
@@ -215,24 +252,24 @@ export function ThreadsView() {
                 e.preventDefault();
                 setIsFormOpen(true);
             }
-            
+
             // Cmd/Ctrl + F - Focus search
             if ((e.metaKey || e.ctrlKey) && e.key === 'f' && !e.shiftKey) {
                 e.preventDefault();
                 const searchInput = document.querySelector('input[placeholder*="Search"]') as HTMLInputElement;
                 searchInput?.focus();
             }
-            
+
             // Arrow keys navigation
             if (filteredThreads.length > 0 && !isFormOpen) {
                 if (e.key === 'ArrowDown') {
                     e.preventDefault();
-                    setFocusedIndex(prev => 
+                    setFocusedIndex(prev =>
                         prev === null ? 0 : Math.min(prev + 1, filteredThreads.length - 1)
                     );
                 } else if (e.key === 'ArrowUp') {
                     e.preventDefault();
-                    setFocusedIndex(prev => 
+                    setFocusedIndex(prev =>
                         prev === null ? filteredThreads.length - 1 : Math.max(prev - 1, 0)
                     );
                 } else if (e.key === 'Enter' && focusedIndex !== null) {
@@ -240,13 +277,13 @@ export function ThreadsView() {
                     handleSelectThread(filteredThreads[focusedIndex].id);
                 }
             }
-            
+
             // ESC - Close form
             if (e.key === 'Escape' && isFormOpen) {
                 setIsFormOpen(false);
             }
         };
-        
+
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [isFormOpen, filteredThreads, focusedIndex, handleSelectThread]);
@@ -256,10 +293,10 @@ export function ThreadsView() {
             {/* Header */}
             <div className="flex justify-between items-end border-b border-border/50 pb-6 mb-6">
                 <div className="flex items-center gap-3">
-                    <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="-ml-2 text-muted-foreground hover:text-foreground transition-colors" 
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className="-ml-2 text-muted-foreground hover:text-foreground transition-colors"
                         onClick={() => navigate(currentProject ? `/companies/${currentProject.company_id}/projects` : "/")}
                     >
                         <ArrowLeft className="h-4 w-4" />
@@ -269,8 +306,8 @@ export function ThreadsView() {
                         <p className="text-sm text-muted-foreground mt-1">Threads & Sessions</p>
                     </div>
                 </div>
-                <Button 
-                    onClick={() => setIsFormOpen(true)} 
+                <Button
+                    onClick={() => setIsFormOpen(true)}
                     className="shadow-sm hover:shadow-md transition-shadow"
                 >
                     <Plus className="mr-2 h-4 w-4" /> New Thread
@@ -340,8 +377,8 @@ export function ThreadsView() {
                             <MessageSquare className="h-8 w-8 text-muted-foreground" />
                         </div>
                         <h3 className="font-medium text-lg text-foreground mb-2">
-                            {searchQuery || statusFilter !== "all" || profileFilter !== "all" 
-                                ? "No threads match your filters" 
+                            {searchQuery || statusFilter !== "all" || profileFilter !== "all"
+                                ? "No threads match your filters"
                                 : "No threads yet"}
                         </h3>
                         <p className="text-sm text-muted-foreground mb-6 max-w-sm">

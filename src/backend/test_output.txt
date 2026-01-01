@@ -1,0 +1,50 @@
+{"timestamp": "2025-12-30 21:48:06", "level": "INFO", "message": "Sentry not configured (SENTRY_DSN not set or not in production)", "request_id": "no-request-id", "module": "sentry_config", "func": "<module>", "logger": "utils.sentry_config"}
+{"timestamp": "2025-12-30 21:48:11", "level": "WARNING", "message": "Pyannote failed to load: module 'torchaudio' has no attribute 'AudioMetaData'", "request_id": "no-request-id", "module": "pyannote_service", "func": "<module>", "logger": "services.pyannote_service"}
+{"timestamp": "2025-12-30 21:48:11", "level": "INFO", "message": "Initializing ConnectionManager (Instance ID: 4cff86ec-9ce1-46d9-a19e-e12c6f0beac2)", "request_id": "no-request-id", "module": "connection_manager", "func": "__init__", "logger": "managers.connection_manager"}
+{"timestamp": "2025-12-30 21:48:13", "level": "INFO", "message": "Registered routes:", "request_id": "no-request-id", "module": "app_main", "func": "<module>", "logger": "backend"}
+{"timestamp": "2025-12-30 21:48:13", "level": "INFO", "message": "  ['GET'] /api/threads/{thread_id}/sessions", "request_id": "no-request-id", "module": "app_main", "func": "<module>", "logger": "backend"}
+{"timestamp": "2025-12-30 21:48:13", "level": "INFO", "message": "  ['POST'] /api/threads/{thread_id}/sessions", "request_id": "no-request-id", "module": "app_main", "func": "<module>", "logger": "backend"}
+{"timestamp": "2025-12-30 21:48:13", "level": "INFO", "message": "  ['POST'] /api/threads/{thread_id}/finalize", "request_id": "no-request-id", "module": "app_main", "func": "<module>", "logger": "backend"}
+{"timestamp": "2025-12-30 21:48:13", "level": "INFO", "message": "  ['GET'] /api/projects/{project_id}/threads", "request_id": "no-request-id", "module": "app_main", "func": "<module>", "logger": "backend"}
+{"timestamp": "2025-12-30 21:48:13", "level": "INFO", "message": "  ['GET'] /api/threads/{thread_id}", "request_id": "no-request-id", "module": "app_main", "func": "<module>", "logger": "backend"}
+{"timestamp": "2025-12-30 21:48:13", "level": "INFO", "message": "  ['DELETE'] /api/threads/{thread_id}", "request_id": "no-request-id", "module": "app_main", "func": "<module>", "logger": "backend"}
+{"timestamp": "2025-12-30 21:48:13", "level": "INFO", "message": "  ['POST'] /api/projects/{project_id}/threads", "request_id": "no-request-id", "module": "app_main", "func": "<module>", "logger": "backend"}
+{"timestamp": "2025-12-30 21:48:13", "level": "INFO", "message": "  ['GET'] /api/threads/{thread_id}/messages", "request_id": "no-request-id", "module": "app_main", "func": "<module>", "logger": "backend"}
+{"timestamp": "2025-12-30 21:48:13", "level": "INFO", "message": "  ['POST'] /api/threads/{thread_id}/messages", "request_id": "no-request-id", "module": "app_main", "func": "<module>", "logger": "backend"}
+{"timestamp": "2025-12-30 21:48:13", "level": "INFO", "message": "  [] /api/ws/threads/{thread_id}/messages", "request_id": "no-request-id", "module": "app_main", "func": "<module>", "logger": "backend"}
+WARNING: 'nvidia' package not found in site-packages. CUDA operations may fail.
+DEBUG: [SOTA] LOADING QDRANT SERVICE V2 (FIXED)
+============================= test session starts =============================
+platform win32 -- Python 3.13.9, pytest-9.0.2, pluggy-1.6.0 -- C:\Users\rdias\AppData\Local\Microsoft\WindowsApps\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend
+configfile: pytest.ini
+plugins: anyio-4.12.0, asyncio-1.3.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=function, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+{"timestamp": "2025-12-30 21:48:13", "level": "INFO", "message": "[OK] Supabase Sync Client Initialized", "request_id": "no-request-id", "module": "supabase_client", "func": "get_sync_client", "logger": "db.supabase_client"}
+tests/test_sota_profiles_integration.py::test_sota_profile_full_flow 
+[1] Created Company: 5cee9dfc-4242-46f5-b29a-171114a72e07
+[2] Created Profile: 8d39e416-9a4f-4eca-9b76-9da89e5ab014
+FAILED to create Thread: {'message': 'null value in column "project_id" of relation "threads" violates not-null constraint', 'code': '23502', 'hint': None, 'details': 'Failing row contains (12e35a07-78e5-4b37-b402-55b9a4239159, 5cee9dfc-4242-46f5-b29a-171114a72e07, null, 8d39e416-9a4f-4eca-9b76-9da89e5ab014, Integration Test Thread, null, active, null, null, 2025-12-30 21:48:14.245463+00, 2025-12-30 21:48:14.245463+00).'}
+FAILED
+
+================================== FAILURES ===================================
+_________________________ test_sota_profile_full_flow _________________________
+tests\test_sota_profiles_integration.py:75: in test_sota_profile_full_flow
+    thread_res = supabase.table("threads").insert(thread_payload).execute()
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Users\rdias\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\site-packages\postgrest\_sync\request_builder.py:53: in execute
+    raise APIError(dict(json_obj))
+E   postgrest.exceptions.APIError: {'message': 'null value in column "project_id" of relation "threads" violates not-null constraint', 'code': '23502', 'hint': None, 'details': 'Failing row contains (12e35a07-78e5-4b37-b402-55b9a4239159, 5cee9dfc-4242-46f5-b29a-171114a72e07, null, 8d39e416-9a4f-4eca-9b76-9da89e5ab014, Integration Test Thread, null, active, null, null, 2025-12-30 21:48:14.245463+00, 2025-12-30 21:48:14.245463+00).'}
+
+During handling of the above exception, another exception occurred:
+tests\test_sota_profiles_integration.py:80: in test_sota_profile_full_flow
+    pytest.fail(f"Failed to create Thread. Error: {e}")
+E   Failed: Failed to create Thread. Error: {'message': 'null value in column "project_id" of relation "threads" violates not-null constraint', 'code': '23502', 'hint': None, 'details': 'Failing row contains (12e35a07-78e5-4b37-b402-55b9a4239159, 5cee9dfc-4242-46f5-b29a-171114a72e07, null, 8d39e416-9a4f-4eca-9b76-9da89e5ab014, Integration Test Thread, null, active, null, null, 2025-12-30 21:48:14.245463+00, 2025-12-30 21:48:14.245463+00).'}
+------------------------------ Captured log call ------------------------------
+INFO     db.supabase_client:supabase_client.py:35 [OK] Supabase Sync Client Initialized
+=========================== short test summary info ===========================
+FAILED tests/test_sota_profiles_integration.py::test_sota_profile_full_flow - Failed: Failed to create Thread. Error: {'message': 'null value in column "project_id" of relation "threads" violates not-null constraint', 'code': '23502', 'hint': None, 'details': 'Failing row contains (12e35a07-78e5-4b37-b402-55b9a4239159, 5cee9dfc-4242-46f5-b29a-171114a72e07, null, 8d39e416-9a4f-4eca-9b76-9da89e5ab014, Integration Test Thread, null, active, null, null, 2025-12-30 21:48:14.245463+00, 2025-12-30 21:48:14.245463+00).'}
+======================= 1 failed, 16 warnings in 1.03s ========================

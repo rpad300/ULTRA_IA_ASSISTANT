@@ -7,7 +7,7 @@ from repositories.message_repository import MessageRepository
 from services.chat_logic import ChatService
 from services.document_service import DocumentService
 from dependencies.chat_deps import get_chat_service
-from middleware.request_id import get_request_id
+from middleware.logging_context import get_request_id
 import logging
 
 logger = logging.getLogger(__name__)
@@ -45,7 +45,7 @@ async def get_threads(project_id: str, request: Request = None):
     Get all threads for a project.
     Uses ThreadRepository.
     """
-    request_id = get_request_id(request)
+    request_id = get_request_id()
     logger.info(f"GET /projects/{project_id}/threads - Request ID: {request_id}")
     
     repo = ThreadRepository()
@@ -58,7 +58,7 @@ async def get_threads(project_id: str, request: Request = None):
 
 @router.get("/threads/{thread_id}", response_model=Dict[str, Any])
 async def get_thread(thread_id: str, request: Request = None):
-    request_id = get_request_id(request)
+    request_id = get_request_id()
     repo = ThreadRepository()
     try:
         thread = await repo.get_by_id(thread_id)
@@ -73,7 +73,7 @@ async def get_thread(thread_id: str, request: Request = None):
 
 @router.delete("/threads/{thread_id}")
 async def delete_thread(thread_id: str, request: Request = None):
-    request_id = get_request_id(request)
+    request_id = get_request_id()
     repo = ThreadRepository()
     try:
         # Check existence first? (Repo delete might return count/bool, logic is in repo)
@@ -102,7 +102,7 @@ async def delete_thread(thread_id: str, request: Request = None):
 
 @router.post("/projects/{project_id}/threads", response_model=Dict[str, Any])
 async def create_thread(project_id: str, thread: ThreadCreateRequest, request: Request = None):
-    request_id = get_request_id(request)
+    request_id = get_request_id()
     repo = ThreadRepository()
     
     # Needs company_id from project? 
@@ -117,18 +117,31 @@ async def create_thread(project_id: str, thread: ThreadCreateRequest, request: R
     
     try:
         sb = await get_async_supabase_client()
-        p_res = await sb.table("projects").select("company_id").eq("id", project_id).single().execute()
+        
+        # SOTA: Fetch Project AND Company info to determine Drive inheritance
+        # 1. Get Project details
+        p_res = await sb.table("projects").select("company_id, drive_folder_id").eq("id", project_id).single().execute()
         if not p_res.data:
             raise HTTPException(status_code=404, detail="Project not found")
         
         company_id = p_res.data["company_id"]
+        project_drive_id = p_res.data.get("drive_folder_id")
         
+        final_drive_id = project_drive_id
+        
+        # 2. If Project has no specific folder, check Company Root Folder
+        if not final_drive_id:
+             c_res = await sb.table("companies").select("drive_root_folder_id").eq("id", company_id).single().execute()
+             if c_res.data:
+                 final_drive_id = c_res.data.get("drive_root_folder_id")
+
         data = {
             "title": thread.title,
             "project_id": project_id,
             "company_id": company_id,
             "status": thread.status,
-            "updated_at": "now()"
+            "updated_at": "now()",
+            "drive_folder_id": final_drive_id # SOTA: Inherit folder ID
         }
         if thread.profile_id: data["profile_id"] = thread.profile_id
         if thread.description: data["description"] = thread.description
@@ -146,7 +159,7 @@ async def create_thread(project_id: str, thread: ThreadCreateRequest, request: R
 
 @router.get("/threads/{thread_id}/messages", response_model=List[Dict[str, Any]])
 async def get_messages(thread_id: str, request: Request = None):
-    request_id = get_request_id(request)
+    request_id = get_request_id()
     repo = MessageRepository()
     try:
         return await repo.get_by_thread(thread_id)

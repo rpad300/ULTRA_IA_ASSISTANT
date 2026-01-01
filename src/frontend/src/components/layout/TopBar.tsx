@@ -22,14 +22,25 @@ export function TopBar() {
         selectedProjectId,
         companies,
         projects,
+        profiles,
+        selectedProfileId,
         fetchCompanies,
-        fetchProjects
+        fetchProjects,
+        fetchProfiles
     } = useWorkspaceStore();
 
     // System Health Store
     const { services, checkHealth, isLoading: isHealthLoading, status: systemStatus } = useSystemStore();
 
     const [assistantMode, setAssistantMode] = useState<AssistantMode>("passive");
+    const [isLensSwapping, setIsLensSwapping] = useState(false);
+
+    const handleProfileSelect = (profileId: string) => {
+        setIsLensSwapping(true);
+        useWorkspaceStore.getState().selectProfile(profileId);
+        // Visual feedback duration
+        setTimeout(() => setIsLensSwapping(false), 800);
+    };
 
     // Initial Load & Polling
     useEffect(() => {
@@ -45,11 +56,28 @@ export function TopBar() {
     }, [companies.length, fetchCompanies, checkHealth]);
 
     // Load projects if needed
-    useEffect(() => {
-        if (selectedCompanyId && projects.filter(p => p.company_id === selectedCompanyId).length === 0) {
-            fetchProjects(selectedCompanyId);
+    // Load projects and profiles if needed
+    // Lazy Load Handlers
+    const handleCompaniesOpen = (open: boolean) => {
+        if (open && companies.length === 0) fetchCompanies();
+    };
+
+    const handleProjectsOpen = (open: boolean) => {
+        if (open && selectedCompanyId) {
+            // SOTA: Refetch if empty to ensure we have list, but only on interaction
+            if (projects.filter(p => p.company_id === selectedCompanyId).length === 0) {
+                fetchProjects(selectedCompanyId);
+            }
         }
-    }, [selectedCompanyId, projects, fetchProjects]);
+    };
+
+    const handleProfilesOpen = (open: boolean) => {
+        if (open && selectedCompanyId) {
+            if (profiles.filter(p => p.company_id === selectedCompanyId).length === 0) {
+                fetchProfiles(selectedCompanyId);
+            }
+        }
+    };
 
     const currentCompany = companies.find(c => c.id === selectedCompanyId);
     const currentProject = projects.find(p => p.id === selectedProjectId);
@@ -83,7 +111,7 @@ export function TopBar() {
             {/* Left: Context Selectors */}
             <div className="flex items-center gap-4">
                 {/* Company Selector */}
-                <DropdownMenu>
+                <DropdownMenu onOpenChange={handleCompaniesOpen}>
                     <DropdownMenuTrigger asChild>
                         <Button variant="ghost" className="gap-2 h-9">
                             <Building2 className="h-4 w-4" />
@@ -118,7 +146,7 @@ export function TopBar() {
 
                 {/* Project Selector */}
                 {selectedCompanyId && (
-                    <DropdownMenu>
+                    <DropdownMenu onOpenChange={handleProjectsOpen}>
                         <DropdownMenuTrigger asChild>
                             <Button variant="ghost" className="gap-2 h-9" disabled={!selectedCompanyId}>
                                 <Briefcase className="h-4 w-4" />
@@ -154,33 +182,46 @@ export function TopBar() {
                     </DropdownMenu>
                 )}
 
+
                 {/* Profile Selector */}
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" className="gap-2 h-9">
-                            <User className="h-4 w-4" />
-                            <Badge variant="outline" className="text-xs font-medium">
-                                BA - MN8
-                            </Badge>
-                            <ChevronDown className="h-3 w-3 opacity-50" />
-                        </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="w-56">
-                        <DropdownMenuItem onClick={() => navigate("/profiles")}>
-                            BA - MN8
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => navigate("/profiles")}>
-                            PO - EVA
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => navigate("/profiles")}>
-                            Interviewer
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => navigate("/profiles")}>
-                            Manage profiles...
-                        </DropdownMenuItem>
-                    </DropdownMenuContent>
-                </DropdownMenu>
+                {selectedCompanyId && (
+                    <DropdownMenu onOpenChange={handleProfilesOpen}>
+                        <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" className="gap-2 h-9" disabled={!selectedCompanyId}>
+                                <User className="h-4 w-4" />
+                                {selectedProfileId && profiles.find(p => p.id === selectedProfileId) ? (
+                                    <Badge variant="outline" className="text-xs font-medium">
+                                        {profiles.find(p => p.id === selectedProfileId)?.name}
+                                    </Badge>
+                                ) : (
+                                    <span className="text-sm font-medium">Select profile</span>
+                                )}
+                                <ChevronDown className="h-3 w-3 opacity-50" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start" className="w-56">
+                            {profiles.length === 0 ? (
+                                <DropdownMenuItem className="opacity-50 pointer-events-none">No profiles</DropdownMenuItem>
+                            ) : (
+                                profiles.map(profile => (
+                                    <DropdownMenuItem
+                                        key={profile.id}
+                                        onClick={() => handleProfileSelect(profile.id)}
+                                        className={cn(
+                                            selectedProfileId === profile.id && "bg-accent"
+                                        )}
+                                    >
+                                        {profile.name}
+                                    </DropdownMenuItem>
+                                ))
+                            )}
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={() => navigate("/profiles")}>
+                                Manage profiles...
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                )}
             </div>
 
             {/* Right: Status & Mode */}
@@ -294,6 +335,22 @@ export function TopBar() {
 
                 </div>
             </div>
+
+            {/* Lens Swap Overlay */}
+            {isLensSwapping && (
+                <div className="fixed inset-0 z-[100] bg-background/30 backdrop-blur-[4px] animate-in fade-in duration-300 pointer-events-none flex items-center justify-center">
+                    <div className="bg-card/90 p-4 rounded-xl shadow-2xl border border-primary/20 animate-in zoom-in-95 slide-in-from-bottom-5 duration-300 flex items-center gap-4">
+                        <div className="relative">
+                            <Sparkles className="h-6 w-6 text-primary animate-spin-slow" />
+                            <div className="absolute inset-0 bg-primary/20 blur-lg rounded-full animate-pulse" />
+                        </div>
+                        <div className="space-y-0.5">
+                            <h4 className="text-sm font-semibold">Switching Neural Lens</h4>
+                            <p className="text-xs text-muted-foreground">Realigning attention mechanisms...</p>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

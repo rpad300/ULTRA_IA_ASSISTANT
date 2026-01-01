@@ -22,6 +22,7 @@ import { OverlayRoot } from "@/components/overlay/OverlayRoot";
 import { useOverlayStore } from "@/store/overlayStore";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 import { NativeAudioView } from "@/components/views/NativeAudioView";
+import { MeetingHUD } from "@/components/oracle/MeetingHUD";
 
 function AppContent() {
   const { isOpen, scriptContent, closeOverlay } = useOverlayStore();
@@ -58,6 +59,7 @@ function AppContent() {
             <Route path="/sessions/:sessionId/transcript" element={<SessionLiveView readOnly={true} />} />
             <Route path="/settings" element={<SettingsView />} />
             <Route path="/native-audio" element={<NativeAudioView />} />
+            <Route path="/oracle" element={<MeetingHUD />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes >
         </ErrorBoundary >

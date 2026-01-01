@@ -159,6 +159,7 @@ public class AudioStreamingWorker : BackgroundService
             
             if (_backendClient != null)
             {
+                _logger.LogInformation($"[Worker] Sending Session Update: {jsonPayload}");
                 _backendClient.CurrentSessionId = _sessionId;
                 _backendClient.SendMessage(jsonPayload);
             }
@@ -169,7 +170,6 @@ public class AudioStreamingWorker : BackgroundService
     }
 
     private CancellationTokenSource? _captureTokenSource;
-    private Task? _captureTask;
 
     public void StopStreaming()
     {
@@ -213,7 +213,7 @@ public class AudioStreamingWorker : BackgroundService
              }
              float rms = count > 0 ? (float)Math.Sqrt(sum / count) : 0;
              
-             _logger.LogInformation($"[AudioStreamingWorker] Processing SOTA Chunk {segment.Count} bytes. MicLvl: {(int)(_micLevel*100)}%, SysLvl: {(int)(_sysLevel*100)}%, MixedRMS: {rms:F3}");
+             _logger.LogInformation($"[AudioStreamingWorker] Processing SOTA Chunk {segment.Count} bytes. MicLvl: {(int)(_micLevel * 100)}%, SysLvl: {(int)(_sysLevel * 100)}%, MixedRMS: {rms:F3}");
         }
 
         bool ownershipTransferred = false;
@@ -251,8 +251,8 @@ public class AudioStreamingWorker : BackgroundService
 
         // V3 Fix: "SessionBegins" (or "Begin") might confuse the backend if not fully supported in NativeMessage Union
         // or trigger a race condition type. Safe to ignore for now as Frontend doesn't strictly need it.
-        if (transcript.TryGetValue("message_type", out var typeObj) && typeObj.ToString().Equals("SessionBegins", StringComparison.OrdinalIgnoreCase)) return;
-        if (transcript.TryGetValue("type", out var typeStr) && typeStr.ToString().Equals("Begin", StringComparison.OrdinalIgnoreCase)) return;
+        if (transcript.TryGetValue("message_type", out var typeObj) && typeObj?.ToString()?.Equals("SessionBegins", StringComparison.OrdinalIgnoreCase) == true) return;
+        if (transcript.TryGetValue("type", out var typeStr) && typeStr?.ToString()?.Equals("Begin", StringComparison.OrdinalIgnoreCase) == true) return;
 
         if (!string.IsNullOrEmpty(_sessionId)) 
         {

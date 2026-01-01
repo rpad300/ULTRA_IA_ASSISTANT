@@ -19,9 +19,27 @@ logger = logging.getLogger(__name__)
 class VoiceEnrollmentService:
     def __init__(self):
         self.speaker_service = get_local_speaker_service()
-        # Use existing executor from speaker service or create new one?
-        # Speaker service has one for heavy lifting, we can use it or ours.
-        # Let's use internal helpers which might use the speaker service's executor.
+        # Initialize session cache if not already done
+        if not hasattr(self.speaker_service, 'session_cache'):
+             self.speaker_service.create_session_speaker_cache()
+
+    def normalize_embedding(self, embedding: np.ndarray) -> np.ndarray:
+        """SOTA Phase 2: L2 Normalization."""
+        norm = np.linalg.norm(embedding)
+        if norm > 1e-9:
+             return embedding / norm
+        return embedding
+
+    def check_outlier(self, embedding: np.ndarray, centroid: np.ndarray, threshold: float = 0.4) -> bool:
+        """
+        SOTA Phase 2: Outlier Detection.
+        If distance > threshold, it's an outlier.
+        Using Cosine Distance (1 - similarity).
+        """
+        # Assume both are normalized
+        similarity = np.dot(embedding, centroid)
+        distance = 1.0 - similarity
+        return distance > threshold
     
     async def enroll_contact(self, contact_id: str, file_paths: List[str], tenant_id: str = None) -> Dict[str, Any]:
         """
@@ -38,8 +56,11 @@ class VoiceEnrollmentService:
         semaphore = asyncio.Semaphore(5) 
         
         async def process_single(path: str):
+            from services.metrics_service import get_metrics_service, TimerContext
             async with semaphore:
-                return await self._process_sample(path)
+                # SOTA Observability: Biometric Extraction Latency
+                with TimerContext(get_metrics_service(), "biometric_extraction_latency"):
+                    return await self._process_sample(path)
 
         results = await asyncio.gather(*[process_single(path) for path in file_paths], return_exceptions=True)
         
@@ -142,6 +163,45 @@ class VoiceEnrollmentService:
             logger.error(f"Enrollment Transaction Failed: {e}")
             raise e
 
+    async def enroll_from_embeddings(self, contact_id: str, embeddings: List[np.ndarray], tenant_id: str = None) -> bool:
+        """
+        Phase 4 Pivot: Lazy Enrollment from Buffer.
+        Takes pre-calculated, high-quality embeddings from Session Cache and graduates them to DB.
+        """
+        try:
+             logger.info(f"Lazy Enrolling {len(embeddings)} traces for {contact_id}")
+             
+             # 1. Variance Check (Diversity)
+             if len(embeddings) > 1:
+                batch_variance = np.mean(np.var(np.array(embeddings), axis=0))
+                if batch_variance < 1e-4:
+                     logger.warning(f"Lazy Enrollment: Low Diversity (Var={batch_variance:.6f})")
+
+             # 2. Bulk Insert to voice_traces
+             supabase = await get_async_supabase_client()
+             rows = []
+             for emb in embeddings:
+                 # Ensure strict L2 norm before persistence
+                 emb_norm = self.normalize_embedding(np.array(emb))
+                 rows.append({
+                     "trace_id": str(uuid.uuid4()),
+                     "contact_id": contact_id,
+                     "embedding": emb_norm.tolist(),
+                     "quality_score": 10.0, # Assumed high since it passed session gates
+                     "snr": 20.0, # Synthetic high value or track actuals if passed
+                     "is_processed": True
+                 })
+             
+             if rows:
+                 await supabase.table("voice_traces").insert(rows).execute()
+                 
+             # 3. Recalculate Global Centroid
+             return await self.speaker_service.recalculate_profile(contact_id, supabase_client=supabase)
+             
+        except Exception as e:
+             logger.error(f"Lazy Enrollment Failed: {e}")
+             return False
+
     async def _process_sample(self, path: str) -> Optional[Dict]:
         """
         Process a single audio file:
@@ -195,6 +255,9 @@ class VoiceEnrollmentService:
             if embedding is None:
                 return {"valid": False, "reason": "Embedding extraction failed"}
 
+            # SOTA Phase 2: L2 Normalization immediately
+            embedding = self.normalize_embedding(embedding)
+
             return {
                 "valid": True,
                 "embedding": embedding.tolist(),
@@ -213,11 +276,15 @@ class VoiceEnrollmentService:
         Returns (pcm_bytes, duration_ms)
         """
         def _convert():
-            # Load from bytes
-            seg = AudioSegment.from_file(io.BytesIO(file_bytes))
-            # Resample
-            seg = seg.set_frame_rate(16000).set_channels(1).set_sample_width(2)
-            return seg.raw_data, len(seg)
+            try:
+                # Load from bytes
+                seg = AudioSegment.from_file(io.BytesIO(file_bytes))
+                # Resample
+                seg = seg.set_frame_rate(16000).set_channels(1).set_sample_width(2)
+                return seg.raw_data, len(seg)
+            except Exception as e:
+                logger.warning(f"Audio Decoding Failed: {e}")
+                raise ValueError("Corrupted or unsupported audio file")
         
         return await asyncio.to_thread(_convert)
 

@@ -141,6 +141,7 @@ class VoiceIdMessage(BaseMessage):
     is_auto_created: bool = False
     trace_id: str
     score: float = Field(ge=0, le=1)
+    is_overlap: bool = False
 
 class StatusMessage(BaseMessage):
     type: Literal[MessageType.STATUS] = MessageType.STATUS
@@ -163,8 +164,15 @@ class SessionUpdateMessage(BaseMessage):
     type: Literal["session_update"] = "session_update"
     status: Optional[str] = None
     session_id: str
-    # 'extra' is handled by BaseMessage now, but we can be explicit if needed
     
+class SpeakerAssignmentMessage(BaseMessage):
+    """SOTA: Phase 4 Payload for Assignment"""
+    type: Literal["speaker_assignment"] = "speaker_assignment"
+    guest_id: str
+    contact_id: str
+    contact_name: str
+    session_id: str
+
 class SessionBeginsMessage(BaseMessage):
     type: Literal["Begin"] = "Begin"
     id: str
@@ -202,6 +210,7 @@ class SessionTurnMessage(BaseMessage):
     confidence: float = 1.0
     speaker: Optional[str] = None
     language: Optional[str] = None
+    trace_id: Optional[str] = None  # SOTA Fix: Required for Frontend UX (Clickable Speaker)
     # SOTA Fix: Capture AssemblyAI's end_of_turn logic
     end_of_turn: bool = Field(default=False, alias="end_of_turn")
     # SOTA Fix: Default to False to prevent stuttering on partials, and accept camelCase from C#
@@ -218,6 +227,32 @@ class UnknownMessage(BaseMessage):
     # Pydantic will try Literals first.
 
 # --- DISCRIMINATOR Union ---
+
+class InsightMessage(BaseMessage):
+    """
+    SOTA: Agent 4 Intervention Payload (HUD Update).
+    """
+    type: Literal["insight"] = "insight"
+    insight_type: Literal["conflict", "solution", "action"] 
+    sequenceId: Optional[int] = None # SOTA: For Delta Sync / Ordering
+    text: str
+    confidence: float
+    trace_id: Optional[str] = None
+    source_link: Optional[str] = None
+    related_fact: Optional[str] = None # For conflict comparison
+
+class TelemetryMessage(BaseMessage):
+    """
+    SOTA: Real-time Audio Metrics for HUD Visualization.
+    """
+    type: Literal["telemetry"] = "telemetry"
+    rms: float = 0.0 # Volume Level (0.0 - 1.0)
+    db: float = -60.0 # Decibels
+    is_clipping: bool = False
+    snr: float = 0.0 # Signal-to-Noise Ratio (est)
+    vad_prob: float = 0.0 # Probability of speech
+
+# --- DISCRIMINATOR Union ---
 NativeMessage = Union[
     AudioMessage, 
     ConfigMessage, 
@@ -230,6 +265,9 @@ NativeMessage = Union[
     SessionUpdateMessage,
     SessionBeginsMessage,
     SessionTurnMessage,
+    SpeakerAssignmentMessage,
+    InsightMessage,
+    TelemetryMessage,
     UnknownMessage # Fallback
 ]
 

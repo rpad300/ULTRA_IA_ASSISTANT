@@ -17,13 +17,14 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 export function ProjectsView() {
     const navigate = useNavigate();
     const { companyId } = useParams();
-    const {
-        projects,
-        selectCompany,
-        fetchProjects,
-        fetchCompany,
-        isLoading
-    } = useWorkspaceStore();
+
+    // SOTA: Strict Selectors
+    const projects = useWorkspaceStore(state => state.projects);
+    const selectCompany = useWorkspaceStore(state => state.selectCompany);
+    const fetchProjects = useWorkspaceStore(state => state.fetchProjects);
+    const fetchCompany = useWorkspaceStore(state => state.fetchCompany);
+    const isLoading = useWorkspaceStore(state => state.isLoading);
+
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingProject, setEditingProject] = useState<Project | null>(null);
     const [currentCompany, setCurrentCompany] = useState<Company | null>(null);
@@ -31,24 +32,44 @@ export function ProjectsView() {
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
     const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
+
     useEffect(() => {
         if (!companyId) {
             navigate("/");
             return;
         }
+
+        const controller = new AbortController();
+        const signal = controller.signal;
+
         const loadData = async () => {
             try {
-                setError(null);
+                if (!signal.aborted) setError(null);
+
+                // Select first to update context
                 selectCompany(companyId);
-                await fetchProjects(companyId);
-                const company = await fetchCompany(companyId);
-                setCurrentCompany(company);
+
+                // Parallel fetch
+                await Promise.all([
+                    fetchProjects(companyId),
+                    fetchCompany(companyId).then(data => {
+                        if (!signal.aborted) setCurrentCompany(data);
+                    })
+                ]);
+
             } catch (e) {
-                setError("Failed to load projects");
-                toast.error("Failed to load projects");
+                if (!signal.aborted) {
+                    setError("Failed to load projects");
+                    toast.error("Failed to load projects");
+                }
             }
         };
+
         loadData();
+
+        return () => {
+            controller.abort();
+        };
     }, [companyId, fetchProjects, navigate, selectCompany, fetchCompany]);
 
     const companyProjects = useMemo(() =>

@@ -47,7 +47,8 @@ class ChatConnectionManager:
         asyncio.create_task(self._heartbeat_loop())
 
     async def connect(self, websocket: WebSocket, thread_id: str):
-        await websocket.accept()
+        # SOTA: Router handles accept() now to ensure early handshake
+        # await websocket.accept()
         if thread_id not in self.active_connections:
             self.active_connections[thread_id] = set()
         self.active_connections[thread_id].add(websocket)
@@ -67,16 +68,26 @@ class ChatConnectionManager:
         which means we are processing a Redis message).
         """
         # 1. Send Local
+        # 1. Send Local (SOTA: Parallel Broadcast)
         if thread_id in self.active_connections:
+            websockets = self.active_connections[thread_id]
+            if not websockets:
+                return
+
+            # Prepare tasks for all connections
+            tasks = [ws.send_json(message) for ws in websockets]
+            
+            # Fire all at once (Parallel)
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Check for failures
             dead_sockets = set()
-            for ws in self.active_connections[thread_id]:
-                try:
-                    await ws.send_json(message)
-                except Exception as e:
-                    logger.warning(f"WS Send Error: {e}")
+            for ws, result in zip(websockets, results):
+                if isinstance(result, Exception):
+                    logger.warning(f"WS Parallel Send Error: {result}")
                     dead_sockets.add(ws)
             
-            # Clean up
+            # Clean up dead connections
             for ws in dead_sockets:
                 self.disconnect(ws, thread_id)
 
@@ -99,30 +110,61 @@ class ChatConnectionManager:
             pass # Socket likely closed
 
     async def _redis_subscriber(self):
-        """Listens for messages from other instances."""
+        """
+        SOTA: Listens for messages from other instances.
+        Includes Auto-Reconnect with Exponential Backoff.
+        """
         if not self.redis or not self.redis._client: return
         
-        pubsub = self.redis._client.pubsub()
-        await pubsub.subscribe("chat_events")
+        backoff = 1
+        while True:
+            try:
+                pubsub = self.redis._client.pubsub()
+                await pubsub.subscribe("chat_events")
+                
+                logger.info(f"Redis Subscriber Active (Instance {self.instance_id})")
+                backoff = 1 # Reset on success
+                
+                async for message in pubsub.listen():
+                    if message["type"] == "message":
+                        try:
+                            data = json.loads(message["data"])
+                            sender_id = data.get("source_id")
+                            
+                            # Ignore own messages (already sent locally)
+                            if sender_id == self.instance_id:
+                                continue
+                                
+                            # Re-broadcast locally
+                            thread_id = data.get("thread_id")
+                            payload = data.get("message")
+                            if thread_id and payload:
+                                await self.broadcast(thread_id, payload, exclude_self=True)
+                                
+                        except Exception as e:
+                            logger.error(f"Redis Sub Error: {e}")
+            except Exception as e:
+                logger.error(f"Redis Connection Lost: {e}. Reconnecting in {backoff}s...")
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, 30) # Cap at 30s
+
+    async def shutdown(self):
+        """SOTA: Graceful Shutdown."""
+        logger.info("ChatManager: Shutting down, closing all connections...")
+        # Notify all clients
+        shutdown_msg = {"type": "system", "status": "shutdown", "message": "Server restarting..."}
         
-        async for message in pubsub.listen():
-            if message["type"] == "message":
-                try:
-                    data = json.loads(message["data"])
-                    sender_id = data.get("source_id")
-                    
-                    # Ignore own messages (already sent locally)
-                    if sender_id == self.instance_id:
-                        continue
-                        
-                    # Re-broadcast locally
-                    thread_id = data.get("thread_id")
-                    payload = data.get("message")
-                    if thread_id and payload:
-                        await self.broadcast(thread_id, payload, exclude_self=True)
-                        
-                except Exception as e:
-                    logger.error(f"Redis Sub Error: {e}")
+        all_tasks = []
+        for thread_id, sockets in self.active_connections.items():
+            for ws in sockets:
+                all_tasks.append(ws.send_json(shutdown_msg))
+                all_tasks.append(ws.close())
+        
+        if all_tasks:
+            # Best effort close
+            await asyncio.gather(*all_tasks, return_exceptions=True)
+        
+        self.active_connections.clear()
 
     async def _heartbeat_loop(self):
         """Periodically pings connections to remove Zombies."""

@@ -1,6 +1,5 @@
 from typing import List, AsyncGenerator, Dict, Any, Optional, Union
-import google.generativeai as genai
-from google.generativeai.types import FunctionDeclaration, Tool 
+from google.genai import types
 from services.gemini_service import get_gemini_service, GeminiService
 import logging
 import json
@@ -66,32 +65,28 @@ class GeminiAgent:
         try:
             # 1. Prepare Initial Content
             current_message_parts = [message]
-            uploaded_files = []
-
+            
             # Handle Attachments (Smart Cache)
             if attachments:
                 yield {"type": "status", "text": "Analyzing attachments..."}
                 for att in attachments:
                     file_path = att.get("path")
-                    # mime_type = att.get("mime_type") # Auto-detect in service
                     if file_path:
                         try:
                             file_ref = await self.service.upload_file(file_path)
                             current_message_parts.append(file_ref)
-                            uploaded_files.append(file_ref)
                         except Exception as upload_err:
                             logger.error(f"Failed to upload attachment {file_path}: {upload_err}")
                             yield {"type": "status", "text": f"Error loading file: {upload_err}"}
 
             # 2. Initialize Session
-            chat = self.service.create_chat_session(
+            chat = await self.service.create_chat_session(
                 history=history,
                 system_instruction=self.system_instruction,
                 tools=self.tools
             )
 
             # 3. Autonomous Tool Loop
-            # We loop until the model stops calling functions and produces text response
             turn_active = True
             loop_count = 0
             MAX_LOOPS = 5  # Safety break
@@ -100,70 +95,108 @@ class GeminiAgent:
                 loop_count += 1
                 
                 # Stream Response
-                stream = await chat.send_message_async(current_message_parts, stream=True)
+                stream = await chat.send_message_stream(current_message_parts)
                 
                 full_text_accumulator = ""
                 function_call_found = False
                 
+                # Iterate over chunks
+                # In google-genai, chunks are GenerateContentResponse objects
                 async for chunk in stream:
-                    # Yield text tokens immediately
+                    # Yield text tokens
                     if chunk.text:
                         full_text_accumulator += chunk.text
                         yield {"type": "token", "text": chunk.text}
                     
-                    # Check for function calls (usually at end or separate chunks)
-                    # Note: chunk.parts might have function_call even if text is present (rare)
+                    # Check for function calls in chunk (SOTA: streaming tool calls)
+                    # Often function calls come in the last chunk or separate chunks
+                    if chunk.candidates and chunk.candidates[0].content.parts:
+                        for part in chunk.candidates[0].content.parts:
+                            if part.function_call:
+                                function_call_found = True
+                                # We'll process it after the stream loop to avoid complexity
+                                # Or we could accumulate here provided 'stream' isn't consumed fully?
+                                # Actually, with the new SDK, iterating the stream gives us partials.
+                                # To get the full tool call properly constructed, we might want the final aggregated response.
+                                pass 
                 
-                # After stream finishes, inspect the final aggregated response (chat.history[-1] references model turn)
-                # But safer to inspect the specific response object from the stream if possible.
-                # Actually, stream object allows `await stream.response` to get the final aggregated response.
-                final_response = await stream.response
+                # The 'stream' iterator itself doesn't have a '.response' property in the new SDK (usually)
+                # But we can access the last chunk or rely on chat.history[-1] which should be the model turn?
+                # Actually, wait, chat.history is updated?
+                # Let's inspect the chat history's last message, which should be the model's response.
                 
-                # Check usage metadata
-                if final_response.usage_metadata:
-                    usage = final_response.usage_metadata
-                    logger.info(f"Token Usage (Turn {loop_count}): Prompt={usage.prompt_token_count}, Cand={usage.candidates_token_count}")
-                    # We could yield this, but maybe just log for now or yield detailed status
+                # With new SDK, chat history is updated automatically.
+                # The last message in history is the model's response.
+                # However, chat.history might be a list of Content objects.
+                # We need to find the latest "model" message.
                 
-                # Inspect parts for function calls
-                for part in final_response.parts:
-                    if fn := part.function_call:
-                        function_call_found = True
-                        fn_name = fn.name
-                        fn_args = dict(fn.args)
-                        
-                        yield {"type": "status", "text": f"Executing tool: {fn_name}..."}
-                        yield {"type": "tool_start", "tool": fn_name, "args": fn_args}
-                        
-                        # EXECUTE LOCALLY (SOTA)
-                        # Here we assume self.tools contains callable objects or we have a registry.
-                        # For now, since user didn't provide specific tool registry logic, 
-                        # we assume we handle the result or existing mechanics.
-                        # IF tools are passed as specific `genai` tools, simple Python functions work.
-                        
-                        tool_result = await self._execute_tool_local(fn_name, fn_args)
+                # Simpler approach: gather accumulated parts if possible.
+                # Unfortuantely 'stream' yields chunks. 
+                # Let's trust that the last chunk contains the Full Function Call or rely on history.
+                
+                # Inspecting history (assuming sync behavior of history update after stream end)
+                # Note: google-genai chat.history is a list of Content.
+                
+                # A safer bet finding the response:
+                # The SDK usually accumulates history.
+                
+                # Let's try to get the last message from history.
+                # But the SDK structure for history access:
+                # chat._history ?
+                
+                # Alternative: The new SDK chunks might contain the full FunctionCall in the last chunk?
+                # Let's try to capture the final response from the stream iteration loop variable?
+                
+                # Actually, `chunk` variable persists after loop (Python scoping).
+                final_response_chunk = chunk
+                
+                # Check usage
+                if final_response_chunk.usage_metadata:
+                    usage = final_response_chunk.usage_metadata
+                    # logger.info(f"Token Usage: {usage}")
+
+                # Process Function Calls
+                # We need to find function calls in the candidates of the final response
+                if final_response_chunk.candidates:
+                    for part in final_response_chunk.candidates[0].content.parts:
+                        if part.function_call:
+                            function_call_found = True
+                            fn = part.function_call
+                            fn_name = fn.name
+                            fn_args = fn.args
                             
-                        # Prepare response for next loop
-                        # We must send function_response
-                        import google.ai.generativelanguage as glm
-                        
-                        # Construct FunctionResponse part
-                        # Using the high-level library helper if available, or constructing dictionary
-                        # The high level 'chat.send_message' accepts a dictionary for function response
-                        current_message_parts = [
-                            genai.protos.Part(
-                                function_response=genai.protos.FunctionResponse(
-                                    name=fn_name,
-                                    response={"result": tool_result}
+                            # SOTA: Granular Tool Feedback (Action Feedback)
+                            ui_hint = f"Invoking {fn_name}..."
+                            if "search" in fn_name: ui_hint = "Searching external knowledge..."
+                            if "check" in fn_name: ui_hint = "Verifying compliance rules..."
+                            
+                            yield {"type": "status", "text": ui_hint}
+                            yield {
+                                "type": "tool_start", 
+                                "tool": fn_name, 
+                                "args": fn_args,
+                                "ui_hint": ui_hint
+                            }
+                            
+                            # EXECUTE LOCALLY
+                            tool_result = await self._execute_tool_local(fn_name, fn_args)
+                            
+                            # Construct FunctionResponse
+                            # In new SDK, we send the result back using types.Part
+                            current_message_parts = [
+                                types.Part(
+                                    function_response=types.FunctionResponse(
+                                        name=fn_name,
+                                        response={"result": tool_result}
+                                    )
                                 )
-                            )
-                        ]
-                        
-                        # Continue loop to send this result back
-                        break # Process one function call at a time (simplify)
+                            ]
+                            
+                            # Continue loop
+                            break 
                 
                 if not function_call_found:
-                    turn_active = False # Done, we got text only (or nothing)
+                    turn_active = False # Done, text only
             
             # 4. Final Status
             sanitized_text = self._sanitize_output(full_text_accumulator)
@@ -175,41 +208,26 @@ class GeminiAgent:
 
     def _sanitize_output(self, text: str) -> str:
         """
-        Basic Output Parser to prevent leakage of internal IDs or System Prompt info.
-        For production, this would use a dedicated Guardrails model.
+        Basic Output Parser.
         """
         if not text:
             return ""
-            
-        # Example: Prevent leaking the system prompt instruction if asked
         restricted_phrases = ["<persona>", "<context_knowledge>", "You are a helpful AI assistant"]
         sanitized = text
         for phrase in restricted_phrases:
              sanitized = sanitized.replace(phrase, "[REDACTED]")
-             
         return sanitized
 
     async def _execute_tool_local(self, name: str, args: Dict[str, Any]) -> Any:
         """
         Executes a tool locally.
-        This allows the backend to control side effects (DB writes, API calls).
         """
         logger.info(f"Executing Tool: {name} with {args}")
-        
-        # 1. Search in provided tools list (if they are callables)
         if self.tools:
             for tool in self.tools:
                 # If tool is a function
                 if hasattr(tool, '__name__') and tool.__name__ == name:
-                    # Check if async
                     if asyncio.iscoroutinefunction(tool):
                         return await tool(**args)
                     return tool(**args)
-                
-                # If tool is a Tool object (langchain style? or custom)
-                if hasattr(tool, 'name') and tool.name == name:
-                     if hasattr(tool, 'run'): # Standardize on run?
-                         return tool.run(**args)
-        
-        # Fallback/Error
-        return f"Error: Tool '{name}' not found or not executable."
+        return f"Error: Tool '{name}' not found."

@@ -11,38 +11,98 @@ DEFAULT_SETTINGS = {
     "transcription_service": "assemblyai" # Options: "assemblyai", "local_whisper"
 }
 
+import json
+import logging
+import aiofiles
+from pydantic import BaseModel, Field
+from typing import Literal, Optional
+
+logger = logging.getLogger(__name__)
+
+SETTINGS_FILE = "settings.json"
+
+class AppSettings(BaseModel):
+    """
+    SOTA Settings Schema with Validation.
+    Defines the contract for application configuration.
+    """
+    transcription_service: Literal["assemblyai", "local_whisper"] = "assemblyai"
+    vad_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
+    debug_mode: bool = False
+    
+    # Add more fields as needed (e.g., specific API versions)
+    
 class SettingsService:
-    def __init__(self):
-        self._settings = self._load_settings()
+    def __init__(self, settings_path=SETTINGS_FILE):
+        self.path = settings_path
+        self._current: AppSettings = AppSettings()
+        self._loaded = False
 
-    def _load_settings(self) -> Dict[str, Any]:
-        if not os.path.exists(SETTINGS_FILE):
-            return DEFAULT_SETTINGS.copy()
+    async def load(self):
+        """
+        Asynchronously loads and validates settings.
+        Graceful fallback to defaults if file is missing/invalid.
+        """
+        import os
+        if not os.path.exists(self.path):
+            logger.info("Settings file not found. Using defaults.")
+            self._loaded = True
+            return
+
         try:
-            with open(SETTINGS_FILE, "r") as f:
-                return json.load(f)
+            async with aiofiles.open(self.path, mode='r') as f:
+                content = await f.read()
+                data = json.loads(content)
+                # Pydantic Validation
+                self._current = AppSettings.model_validate(data)
+                self._loaded = True
+                logger.info("Settings loaded successfully.")
         except Exception as e:
-            logger.error(f"Failed to load settings: {e}")
-            return DEFAULT_SETTINGS.copy()
+            logger.warning(f"Failed to load settings (using defaults): {e}")
+            # We keep default settings in self._current
+            self._loaded = True
 
-    def _save_settings(self):
+    @property
+    def current(self) -> AppSettings:
+        return self._current
+
+    async def update(self, **kwargs):
+        """
+        Updates settings atomically and persists to disk.
+        """
         try:
-            with open(SETTINGS_FILE, "w") as f:
-                json.dump(self._settings, f, indent=4)
+            # Create a new validated instance (Copy-on-Write logic)
+            new_settings = self._current.model_copy(update=kwargs)
+            self._current = new_settings
+            
+            # Persist non-blocking
+            async with aiofiles.open(self.path, mode='w') as f:
+                # model_dump_json is fast and standardized
+                await f.write(self._current.model_dump_json(indent=4))
+            
+            logger.info(f"Settings updated: {kwargs}")
+            
+            # Reactive Logic could go here:
+            # e.g., if "transcription_service" in kwargs: notify_transcription_manager()
+            
         except Exception as e:
-            logger.error(f"Failed to save settings: {e}")
+            logger.error(f"Failed to update settings: {e}")
+            raise ValueError(f"Invalid settings update: {e}")
 
-    def get_setting(self, key: str, default: Any = None) -> Any:
-        return self._settings.get(key, default)
+    async def get_value(self, key: str):
+        # Helper for dynamic access mostly for legacy compatibility
+        if not self._loaded: await self.load()
+        return getattr(self._current, key, None)
 
-    def set_setting(self, key: str, value: Any):
-        self._settings[key] = value
-        self._save_settings()
 
-_settings_service = None
+# Singleton with deferred initialization capability
+_instance = SettingsService()
 
-def get_settings_service():
-    global _settings_service
-    if _settings_service is None:
-        _settings_service = SettingsService()
-    return _settings_service
+async def get_settings_service():
+    """
+    Async Factory for Settings Service.
+    Ensures settings are loaded before returning.
+    """
+    if not _instance._loaded:
+        await _instance.load()
+    return _instance

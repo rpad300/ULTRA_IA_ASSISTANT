@@ -7,12 +7,24 @@ import asyncio
 from typing import AsyncGenerator
 from fastapi.testclient import TestClient
 from httpx import AsyncClient
-from main import app
-from db.supabase_client import get_supabase_client, close_supabase_client
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from app_main import app
+from db.supabase_client import get_supabase_client
 from config import ENVIRONMENT
 
 # Configure test environment
 ENVIRONMENT = "test"
+
+def pytest_configure(config):
+    """SOTA: Filter noisy warnings for cleaner test output."""
+    import warnings
+    warnings.filterwarnings("ignore", message=".*nvidia.*")
+    warnings.filterwarnings("ignore", message=".*torchaudio.*")
+    warnings.filterwarnings("ignore", category=DeprecationWarning)
+    warnings.filterwarnings("ignore", category=UserWarning, module="pydantic") # Common pydantic V2 warnings
+
 
 
 @pytest.fixture(scope="session")

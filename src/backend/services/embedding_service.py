@@ -63,40 +63,23 @@ class EmbeddingService:
         author_name: Optional[str] = None,
         original_created_at: Optional[str] = None,
         meta_tags: Optional[list] = None,
+        metadata: Optional[Dict[str, Any]] = None, # New SOTA arg
         chunk_index: int = 0
     ) -> str:
         """
         Syncs a message to the vector store (Qdrant) and creates an index entry.
-        
-        Args:
-            message_id: UUID of the message in Supabase
-            content: Text content to embed
-            company_id: REQUIRED - Multi-tenancy identifier
-            project_id: Optional project context
-            thread_id: Optional thread context
-            author_name: Optional author name for context
-            original_created_at: ISO timestamp string
-            meta_tags: Optional list of tags
-            chunk_index: Index if content is split into chunks (default 0)
-        
-        Returns:
-            qdrant_point_id: The UUID used as point ID in Qdrant
-        
-        Raises:
-            Exception: If embedding generation, Qdrant upsert, or index save fails
         """
+        # ... (lines omitted for brevity, logic remains same until payload build) ...
+
         # Fix for default-company string being passed as UUID
         if company_id == "default-company" or company_id == "00000000-0000-0000-0000-000000000000":
-             # Try to fetch a valid company ID from the database
              try:
-                 # Minimal dependency import to avoid circular dep
                  from db.supabase_client import get_supabase_client
                  supabase = get_supabase_client()
                  res = supabase.table("companies").select("id").limit(1).execute()
                  if res.data:
                      company_id = res.data[0]["id"]
                  else:
-                     # Fallback to nil if really no company exists (will likely fail FK but we tried)
                      company_id = "00000000-0000-0000-0000-000000000000"
              except:
                  company_id = "00000000-0000-0000-0000-000000000000"
@@ -114,22 +97,17 @@ class EmbeddingService:
         
         if existing.data:
             existing_record = existing.data[0]
-            # If content hash matches, skip re-embedding
             if existing_record.get("content_hash") == content_hash:
                 return existing_record["qdrant_point_id"]
-            # Otherwise, use existing point_id for update
             point_id = existing_record["qdrant_point_id"]
         else:
-            point_id = None  # Will generate new UUID
+            point_id = None
         
         # 3. Check cache first
         vector = self.cache.get(content)
         
         if vector is None:
-            # 3a. Rate limiting
             await self.rate_limiter.wait_if_needed("embedding")
-            
-            # 3b. Generate embedding (with retry and metrics)
             try:
                 with TimerContext(self.metrics, "embedding_generation", {"type": "message"}):
                     vector = await retry_with_backoff(
@@ -138,15 +116,11 @@ class EmbeddingService:
                         initial_delay=1.0,
                         content=content
                     )
-                
-                # Cache the result
                 self.cache.set(content, vector)
                 self.metrics.increment("embeddings_generated", tags={"type": "message"})
             except Exception as e:
                 logger.error(f"Failed to generate embedding after retries: {e}")
                 self.metrics.increment("embedding_failures", tags={"type": "message"})
-                
-                # Add to DLQ
                 self.dlq.add_failure(
                     operation_type="sync_message",
                     external_id=message_id,
@@ -159,7 +133,7 @@ class EmbeddingService:
         else:
             self.metrics.increment("embedding_cache_hits", tags={"type": "message"})
         
-        # 4. Build Qdrant payload (as per specification)
+        # 4. Build Qdrant payload (SOTA: Enriched Metadata)
         payload = {
             "company_id": company_id,
             "type": "message",
@@ -168,6 +142,10 @@ class EmbeddingService:
             "author_name": author_name or "",
             "meta_tags": meta_tags or []
         }
+        
+        # Merge extra metadata if provided
+        if metadata:
+            payload.update(metadata)
         
         if project_id:
             payload["project_id"] = project_id
@@ -513,6 +491,38 @@ class EmbeddingService:
             start = end - overlap if end < len(text) else end
         
         return chunks
+
+    async def delete_session_vectors(self, session_id: str):
+        """
+        Deletes all vectors associated with a specific session summary.
+        Also we should check if we want to delete ALL messages if they are tagged with this session, 
+        but currently messages are linked to threads, not sessions directly.
+        So we primarily delete the session summary.
+        """
+        try:
+            # Delete from Qdrant where external_id = session_id (via embedding_index lookup) or just try to find based on metadata?
+            # Our Qdrant payload doesn't necessarily store session_id directly in top level metadata unless we put it there.
+            # But we have `embedding_index`.
+            
+            # 1. Find Qdrant Points from Supabase Index
+            records = self.supabase.table("embedding_index").select("qdrant_point_id").eq("external_id", session_id).eq("external_type", "session_summary").execute()
+            
+            if records.data:
+                # 2. Delete from Qdrant
+                # We can delete by ID
+                points_to_delete = [r["qdrant_point_id"] for r in records.data]
+                if points_to_delete:
+                    # Qdrant client delete by IDs
+                     self.qdrant.client.delete(
+                        collection_name=self.qdrant.collection_name,
+                        points_selector=models.PointIdsList(points=points_to_delete)
+                    )
+            
+            # 3. Clean up Supabase Index
+            self.supabase.table("embedding_index").delete().eq("external_id", session_id).eq("external_type", "session_summary").execute()
+            
+        except Exception as e:
+            logger.error(f"Error deleting session vectors for {session_id}: {e}")
 
 
 # Singleton

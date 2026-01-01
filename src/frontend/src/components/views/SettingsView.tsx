@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { useTheme } from "@/contexts/ThemeContext";
 import { audioServiceApi } from "@/api/client";
 import { useMeetingStore } from "@/store/meetingStore";
+import { AICommandCenter } from "@/components/admin/AICommandCenter";
 
 export function SettingsView() {
     const { theme, setTheme } = useTheme();
@@ -66,7 +67,8 @@ export function SettingsView() {
             <Tabs defaultValue="general" className="w-full">
                 <TabsList className="grid w-full grid-cols-7 lg:w-[700px] overflow-x-auto" style={{ scrollbarWidth: 'thin' }}>
                     <TabsTrigger value="general">General</TabsTrigger>
-                    <TabsTrigger value="ai">AI Models</TabsTrigger>
+                    <TabsTrigger value="brain">Brain (SOTA)</TabsTrigger>
+                    <TabsTrigger value="ai">Keys</TabsTrigger>
                     <TabsTrigger value="audio">Audio</TabsTrigger>
                     <TabsTrigger value="stealth">Stealth</TabsTrigger>
                     <TabsTrigger value="integrations">Integrations</TabsTrigger>
@@ -191,11 +193,16 @@ export function SettingsView() {
                         </Card>
                     </TabsContent>
 
-                    {/* AI Models Tab */}
+                    {/* Brain Tab (Agent 6) */}
+                    <TabsContent value="brain" className="space-y-6">
+                        <AICommandCenter />
+                    </TabsContent>
+
+                    {/* AI Models Tab (Existing) - Renaming trigger to 'keys' conceptually or just keeping it */}
                     <TabsContent value="ai" className="space-y-6">
                         <Card>
                             <CardHeader>
-                                <CardTitle>LLM Configuration</CardTitle>
+                                <CardTitle>LLM Keys & Access</CardTitle>
                                 <CardDescription>Manage keys for Gemini, OpenAI, or Anthropic.</CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-4">

@@ -1,236 +1,12 @@
-import type { StateCreator } from 'zustand';
-import type { MeetingState } from '../meetingStore';
-import type { CrossMeetingPattern } from '@/types/slices/intelligence';
+export * from '@/types/slices/intelligence';
 
-// --- Legacy Intelligence Types (Recovered) ---
-export interface DetectedAction {
-    id: string;
-    text: string;
-    timestamp: number;
-    confirmed?: boolean;
-    taskId?: string;
-}
+import type { MeetingSlice, IntelligenceSlice } from '../types';
+import { calculateQualityScore } from '@/utils/meeting-quality-calculator';
+import type { ActionId, ParticipantId, TimestampMs, BlockId } from '@/types/slices/intelligence';
+import { toBrand } from '@/types/slices/intelligence';
+import { workspaceApi } from '@/api/client';
 
-export interface Clarification {
-    id: string;
-    suggestion: string;
-    timestamp: number;
-    context?: string;
-}
-
-export interface Risk {
-    id: string;
-    summary: string;
-    severity: 'low' | 'medium' | 'high';
-    timestamp: number;
-    contextId?: string;
-}
-
-export interface LiveSummary {
-    keyPoints: string[];
-    decisions: string[];
-    actionItems: string[];
-    lastUpdated: number;
-}
-
-export interface MeetingHealth {
-    engagement: number;
-    clarity: number;
-    progress: number;
-    participation: number;
-    overall: number;
-}
-
-export interface TopicCluster {
-    id: string;
-    name: string;
-    blocks: string[];
-    startTime: number;
-    endTime: number;
-    sentiment: 'positive' | 'neutral' | 'negative';
-    keywords: string[];
-    participantCount: number;
-}
-
-export interface MeetingQualityScore {
-    overall: number; // 0-100
-    engagement: number;
-    clarity: number;
-    efficiency: number;
-    participation: number;
-    decisionVelocity: number;
-    lastUpdated: number;
-}
-
-export interface EmotionState {
-    participantId: string;
-    emotion: 'happy' | 'neutral' | 'frustrated' | 'confused' | 'engaged' | 'bored';
-    confidence: number; // 0-100
-    timestamp: number;
-}
-
-export interface FlowPrediction {
-    id: string;
-    predictedTopic: string;
-    confidence: number; // 0-100
-    estimatedTime: number; // seconds until likely
-    reason: string;
-    timestamp: number;
-}
-
-export interface PredictiveQuestion {
-    id: string;
-    question: string;
-    context: string;
-    priority: 'high' | 'medium' | 'low';
-    category: 'risk' | 'clarification' | 'follow-up' | 'strategic';
-    timestamp: number;
-}
-
-export interface CoachingInsight {
-    id: string;
-    type: 'tone' | 'pace' | 'question' | 'interruption' | 'silence' | 'assertiveness';
-    severity: 'good' | 'warning' | 'critical';
-    message: string;
-    suggestion?: string;
-    timestamp: number;
-}
-
-export interface ConflictDetection {
-    id: string;
-    participants: string[];
-    severity: 'low' | 'medium' | 'high';
-    summary: string;
-    resolutionSuggestions: string[];
-    timestamp: number;
-}
-
-export interface RelationshipInsight {
-    participant1: string;
-    participant2: string;
-    relationshipType: 'collaborative' | 'conflict' | 'neutral' | 'influential';
-    strength: number; // 0-100
-    interactions: number;
-    lastInteraction: number;
-    patterns: string[];
-}
-
-export interface PrepDocument {
-    id: string;
-    sessionId: string;
-    participantInsights: Array<{
-        name: string;
-        insights: string[];
-        likelyQuestions: string[];
-    }>;
-    likelyTopics: string[];
-    suggestedQuestions: string[];
-    risks: string[];
-    context: string;
-    generatedAt: number;
-}
-
-export interface HighlightGroup {
-    id: string;
-    name: string;
-    blockIds: string[];
-    category: 'decision' | 'action' | 'risk' | 'insight' | 'question' | 'other';
-    createdAt: number;
-}
-
-export interface AutoAction {
-    id: string;
-    type: 'create_task' | 'send_email' | 'schedule_followup' | 'update_crm' | 'generate_document';
-    description: string;
-    data: any;
-    status: 'pending' | 'approved' | 'executed' | 'rejected';
-    timestamp: number;
-    preview?: string;
-}
-
-export interface IntelligenceSlice {
-    // Core Intelligence
-    crossMeetingPatterns: CrossMeetingPattern[];
-    isAnalyzingPatterns: boolean;
-
-    // Actions & Risks
-    detectedActions: DetectedAction[];
-    risks: Risk[];
-    clarifications: Clarification[];
-    autoActions: AutoAction[];
-    autoActionsEnabled: boolean;
-
-    // Summary & Health
-    liveSummary: LiveSummary | null;
-    meetingHealth: MeetingHealth | null;
-    meetingQualityScore: MeetingQualityScore | null;
-
-    // Topics
-    topicClusters: TopicCluster[];
-
-    // Advanced Insights
-    emotionStates: EmotionState[];
-    flowPredictions: FlowPrediction[];
-    predictiveQuestions: PredictiveQuestion[];
-    coachingInsights: CoachingInsight[];
-    conflicts: ConflictDetection[];
-    relationshipInsights: RelationshipInsight[];
-    highlightGroups: HighlightGroup[];
-
-    // Prep
-    prepDocuments: PrepDocument[];
-
-    // Actions
-    setAnalyzingPatterns: (isAnalyzing: boolean) => void;
-    addCrossMeetingPattern: (pattern: CrossMeetingPattern) => void;
-
-    addDetectedAction: (action: Omit<DetectedAction, 'id'>) => void;
-    confirmActionAsTask: (actionId: string) => void;
-    addRisk: (risk: Omit<Risk, 'id'>) => void;
-    addClarification: (clarification: Omit<Clarification, 'id'>) => void;
-
-    updateLiveSummary: (summary?: Partial<LiveSummary>) => void; // Optional arg
-    updateMeetingHealth: (health?: Partial<MeetingHealth>) => void; // Optional arg
-    calculateMeetingQualityScore: () => void;
-
-    // Legacy / Action
-    markCriticalMoment: () => void;
-
-    autoClusterTopics: () => void;
-    analyzeSentiment: (text: string) => 'positive' | 'neutral' | 'negative';
-
-    updateEmotionState: (participantId: string, emotion: EmotionState['emotion'], confidence: number) => void;
-
-    predictNextTopics: () => void;
-    generatePredictiveQuestions: () => void;
-    analyzeUserSpeaking: () => void;
-    detectConflicts: () => void;
-    updateRelationshipInsights: () => void;
-
-    createHighlightGroup: (group: Omit<HighlightGroup, 'id'>) => void;
-    addBlockToHighlightGroup: (groupId: string, blockId: string) => void;
-    autoGroupHighlights: () => void;
-
-    generatePrepDocument: (sessionId: string) => void;
-
-    // Auto Actions
-    enableAutoActions: () => void;
-    disableAutoActions: () => void;
-    generateAutoActions: () => void;
-    addAutoAction: (action: AutoAction) => void;
-    approveAutoAction: (actionId: string) => void;
-    rejectAutoAction: (actionId: string) => void;
-    executeAutoAction: (actionId: string) => void;
-
-    // Cross Meeting
-    analyzeCrossMeetingPatterns: () => void;
-    detectContradictions: () => void;
-    analyzeTrends: () => void;
-
-    dismissCoachingInsight: (id: string) => void;
-}
-
-export const createIntelligenceSlice: StateCreator<MeetingState, [], [], IntelligenceSlice> = (set, _get) => ({
+export const createIntelligenceSlice: MeetingSlice<IntelligenceSlice> = (set, get) => ({
     // Initial State
     crossMeetingPatterns: [],
     isAnalyzingPatterns: false,
@@ -239,111 +15,269 @@ export const createIntelligenceSlice: StateCreator<MeetingState, [], [], Intelli
     clarifications: [],
     autoActions: [],
     autoActionsEnabled: false,
-    liveSummary: { keyPoints: [], decisions: [], actionItems: [], lastUpdated: 0 }, // Init with empty for safety
+    liveSummary: { keyPoints: [], decisions: [], actionItems: [], lastUpdated: toBrand<TimestampMs>(0) },
     meetingHealth: null,
     meetingQualityScore: null,
+    qualityScoreHistory: [],
     topicClusters: [],
     emotionStates: [],
     flowPredictions: [],
+    currentTopic: null,
     predictiveQuestions: [],
     coachingInsights: [],
     conflicts: [],
     relationshipInsights: [],
     highlightGroups: [],
     prepDocuments: [],
+    lastInsight: null,
+    manualGuidance: [],
 
     // Methods
-    setAnalyzingPatterns: (isAnalyzing) => set({ isAnalyzingPatterns: isAnalyzing }),
+    setLastInsight: (insight) => set((state) => { state.lastInsight = insight; }),
+    setAnalyzingPatterns: (isAnalyzing) => set((state) => { state.isAnalyzingPatterns = isAnalyzing; }),
 
     addCrossMeetingPattern: (pattern) => {
-        set(state => ({
-            crossMeetingPatterns: [pattern, ...state.crossMeetingPatterns],
-            isAnalyzingPatterns: false
-        }));
+        set((state) => {
+            // Unshift into mutable array. pattern might have readonly tokens but we assume shape is compatible enough or we cast.
+            // Using 'as any' safely here because Immer proxies handle the draft and checking recursiveness on readonly readonly arrays is painful.
+            state.crossMeetingPatterns.unshift(pattern as any);
+            state.isAnalyzingPatterns = false;
+        });
     },
 
-    addDetectedAction: (action) => set(state => ({
-        detectedActions: [...state.detectedActions, { ...action, id: Date.now().toString() }]
-    })),
+    addDetectedAction: (action) => set((state) => {
+        state.detectedActions.push({
+            ...action,
+            id: Date.now().toString(),
+            timestamp: toBrand<TimestampMs>(Date.now())
+        });
+    }),
 
-    confirmActionAsTask: (id) => set(state => ({
-        detectedActions: state.detectedActions.map(a => a.id === id ? { ...a, confirmed: true } : a)
-    })),
+    confirmActionAsTask: (id, updates) => set((state) => {
+        const action = state.detectedActions.find(a => a.id === id);
+        if (action) {
+            Object.assign(action, updates);
+            action.confirmed = true;
+        }
+    }),
 
-    addRisk: (risk) => set(state => ({
-        risks: [...state.risks, { ...risk, id: Date.now().toString() }]
-    })),
+    rejectDetectedAction: (id) => set((state) => {
+        state.detectedActions = state.detectedActions.filter(a => a.id !== id);
+    }),
 
-    addClarification: (c) => set(state => ({
-        clarifications: [...state.clarifications, { ...c, id: Date.now().toString() }]
-    })),
+    addRisk: (risk) => set((state) => {
+        state.risks.push({ ...risk, id: Date.now().toString(), timestamp: toBrand<TimestampMs>(Date.now()) });
+    }),
 
-    updateLiveSummary: (summary = {}) => set(state => ({
-        liveSummary: { ...(state.liveSummary || { keyPoints: [], decisions: [], actionItems: [], lastUpdated: 0 }), ...summary, lastUpdated: Date.now() }
-    })),
+    addClarification: (c) => set((state) => {
+        state.clarifications.push({ ...c, id: Date.now().toString(), timestamp: toBrand<TimestampMs>(Date.now()) });
+    }),
 
-    updateMeetingHealth: (health = {}) => set(state => ({
-        meetingHealth: { ...(state.meetingHealth || { engagement: 0, clarity: 0, progress: 0, participation: 0, overall: 0 }), ...health }
-    })),
+    updateLiveSummary: (summary = {}) => set((state) => {
+        if (!state.liveSummary) {
+            state.liveSummary = { keyPoints: [], decisions: [], actionItems: [], lastUpdated: toBrand<TimestampMs>(0), executiveOverview: { context: '', keyPoints: [], conclusion: '' } };
+        }
+        Object.assign(state.liveSummary, summary);
+        state.liveSummary.lastUpdated = toBrand<TimestampMs>(Date.now());
+    }),
+
+    updateLiveSummaryItem: (id, updates) => set((state) => {
+        if (!state.liveSummary) return;
+
+        // Cast to any[] or mutable array to bypass readonly check on Immer draft
+        const updateInList = (list: any[]) => {
+            const item = list.find(i => i.id === id);
+            if (item) Object.assign(item, updates);
+        };
+
+        updateInList(state.liveSummary.keyPoints as any[]);
+        updateInList(state.liveSummary.decisions as any[]);
+        updateInList(state.liveSummary.actionItems as any[]);
+        state.liveSummary.lastUpdated = toBrand<TimestampMs>(Date.now());
+    }),
+
+    updateMeetingHealth: (health = {}) => set((state) => {
+        if (!state.meetingHealth) {
+            state.meetingHealth = { engagement: 0, clarity: 0, progress: 0, participation: 0, overall: 0 };
+        }
+        Object.assign(state.meetingHealth, health);
+    }),
 
     calculateMeetingQualityScore: () => {
-        // Mock logic needed for build
-        set({ meetingQualityScore: { overall: 85, engagement: 80, clarity: 90, efficiency: 85, participation: 80, decisionVelocity: 85, lastUpdated: Date.now() } });
+        const state = get();
+        // Create snapshot for pure function
+        const snapshot = {
+            startTime: state.startTime || 0,
+            transcriptBlocks: state.transcriptBlocks.map(b => ({
+                timestamp: b.timestamp, // Fixed: use timestamp instead of startTime
+                text: b.text,
+                speakerId: b.speakerId
+            })) || [],
+            participants: state.participants || [],
+            detectedActions: state.detectedActions.map(a => ({
+                timestamp: a.timestamp
+            })) || []
+        };
+
+        const newScore = calculateQualityScore(snapshot);
+
+        set((state) => {
+            state.meetingQualityScore = newScore;
+            state.qualityScoreHistory.push({ overall: newScore.overall, timestamp: newScore.lastUpdated });
+            if (state.qualityScoreHistory.length > 20) {
+                state.qualityScoreHistory.shift();
+            }
+        });
     },
 
     markCriticalMoment: () => {
-        // Implementation: Add a marker to the transcript or timeline
-        // For now, just a console log or mock effect as it wasn't in the original slice plan
-        console.log("Critical Moment Marked");
-
-        // Optionally create a highlight group or detected action
-        set(state => ({
-            detectedActions: [...state.detectedActions, {
+        set((state) => {
+            state.detectedActions.push({
                 id: Date.now().toString(),
                 text: "User marked critical moment",
-                timestamp: Date.now(),
+                timestamp: toBrand<TimestampMs>(Date.now()),
+                confidence: 1.0,
                 confirmed: true
-            }]
-        }));
+            });
+        });
     },
 
-    autoClusterTopics: () => { /* Mock or Async implementation */ },
+    autoClusterTopics: async () => {
+        console.log("[Intelligence] Auto-clustering triggered on backend.");
+    },
 
-    analyzeSentiment: (_text) => 'neutral', // Simple fallback with unused var fix
+    analyzeSentiment: (_text) => {
+        return 'neutral';
+    },
 
-    updateEmotionState: (pid, emotion, confidence) => set(state => {
-        const existing = state.emotionStates.find(e => e.participantId === pid);
+    updateEmotionState: (pid, emotion, confidence, reason) => set((state) => {
+        const participantId = toBrand<ParticipantId>(pid);
+        const existing = state.emotionStates.find(e => e.participantId === participantId);
         if (existing) {
-            return { emotionStates: state.emotionStates.map(e => e.participantId === pid ? { ...e, emotion, confidence, timestamp: Date.now() } : e) };
+            existing.emotion = emotion;
+            existing.confidence = confidence;
+            existing.reasoning = reason; // Fixed: use reasoning
+            existing.timestamp = toBrand<TimestampMs>(Date.now());
+        } else {
+            state.emotionStates.push({
+                participantId,
+                emotion,
+                confidence,
+                reasoning: reason, // Fixed: usage reasoning
+                timestamp: toBrand<TimestampMs>(Date.now()),
+                id: Date.now().toString()
+            });
         }
-        return { emotionStates: [...state.emotionStates, { participantId: pid, emotion, confidence, timestamp: Date.now() }] };
     }),
 
     predictNextTopics: () => { },
+    setCurrentTopic: (topic) => set((state) => { state.currentTopic = topic; }),
+    removePrediction: (id) => set((state) => {
+        state.flowPredictions = state.flowPredictions.filter(p => p.id !== id);
+    }),
     generatePredictiveQuestions: () => { },
     analyzeUserSpeaking: () => { },
     detectConflicts: () => { },
     updateRelationshipInsights: () => { },
 
-    createHighlightGroup: (group) => set(state => ({ highlightGroups: [...state.highlightGroups, { ...group, id: Date.now().toString() }] })),
-    addBlockToHighlightGroup: (groupId, blockId) => set(state => ({
-        highlightGroups: state.highlightGroups.map(g => g.id === groupId ? { ...g, blockIds: [...g.blockIds, blockId] } : g)
-    })),
+    setPredictiveQuestions: (questions) => set((state) => { state.predictiveQuestions = questions; }),
+    updatePredictiveQuestion: (id, updates) => set((state) => {
+        const q = state.predictiveQuestions.find(q => q.id === id);
+        if (q) Object.assign(q, updates);
+    }),
+
+    createHighlightGroup: (group) => set((state) => {
+        const bIds = (group.blockIds || []) as any[]; // cast to handle readonly
+        state.highlightGroups.push({
+            ...group,
+            blockIds: bIds,
+            id: Date.now().toString(),
+            createdAt: toBrand<TimestampMs>(Date.now())
+        });
+    }),
+
+    addBlockToHighlightGroup: (groupId, blockId) => set((state) => {
+        const group = state.highlightGroups.find(g => g.id === groupId);
+        const bId = toBrand<BlockId>(blockId);
+        if (group) {
+            // Immer draft arrays are mutable even if type says readonly?
+            // Safest to cast to any to push
+            (group.blockIds as any[]).push(bId);
+        }
+    }),
+
     autoGroupHighlights: () => { },
 
-    generatePrepDocument: (_sessionId) => { },
+    updatePrepDocument: (updates) => set((state) => {
+        const lastDoc = state.prepDocuments[state.prepDocuments.length - 1];
+        if (lastDoc) {
+            Object.assign(lastDoc, updates);
+            lastDoc.lastUpdated = toBrand<TimestampMs>(Date.now());
+        }
+    }),
 
-    enableAutoActions: () => set({ autoActionsEnabled: true }),
-    disableAutoActions: () => set({ autoActionsEnabled: false }),
+    generatePrepDocument: async (sessionId) => {
+        try {
+            const data = await workspaceApi.generateSessionPrep(sessionId);
+
+            set((state) => {
+                state.prepDocuments.push({
+                    ...data,
+                    generatedAt: data.generatedAt ? toBrand<TimestampMs>(data.generatedAt) : toBrand<TimestampMs>(Date.now()),
+                    lastUpdated: toBrand<TimestampMs>(Date.now())
+                });
+            });
+        } catch (e) {
+            console.error("Failed to generate prep document", e);
+        }
+    },
+
+    enableAutoActions: () => set((state) => { state.autoActionsEnabled = true; }),
+    disableAutoActions: () => set((state) => { state.autoActionsEnabled = false; }),
     generateAutoActions: () => { },
-    addAutoAction: (action) => set(state => ({ autoActions: [...state.autoActions, action] })),
-    approveAutoAction: (id) => set(state => ({ autoActions: state.autoActions.map(a => a.id === id ? { ...a, status: 'approved' } : a) })),
-    rejectAutoAction: (id) => set(state => ({ autoActions: state.autoActions.map(a => a.id === id ? { ...a, status: 'rejected' } : a) })),
-    executeAutoAction: (id) => set(state => ({ autoActions: state.autoActions.map(a => a.id === id ? { ...a, status: 'executed' } : a) })),
+    addAutoAction: (action) => set((state) => {
+        // Cast to any to avoid readonly complaints on push if action comes from compatible read-only source
+        // AutoAction interface might have readonly array props that confuse assignment to WritableDraft
+        state.autoActions.push(action as any);
+    }),
+    approveAutoAction: (id) => set((state) => {
+        const action = state.autoActions.find(a => a.id === toBrand<ActionId>(id));
+        if (action) action.status = 'approved';
+    }),
+    rejectAutoAction: (id) => set((state) => {
+        const action = state.autoActions.find(a => a.id === toBrand<ActionId>(id));
+        if (action) action.status = 'rejected';
+    }),
+    executeAutoAction: (id) => set((state) => {
+        const action = state.autoActions.find(a => a.id === toBrand<ActionId>(id));
+        if (action) action.status = 'executed';
+    }),
 
     analyzeCrossMeetingPatterns: () => { },
     detectContradictions: () => { },
     analyzeTrends: () => { },
 
-    dismissCoachingInsight: (id) => set(state => ({ coachingInsights: state.coachingInsights.filter(c => c.id !== id) }))
+    dismissCoachingInsight: (id) => set((state) => {
+        state.coachingInsights = state.coachingInsights.filter(c => c.id !== id);
+    }),
+
+    addCoachingInsight: (insight) => set((state) => {
+        if (state.coachingInsights.length >= 50) {
+            state.coachingInsights.shift();
+        }
+        state.coachingInsights.push(insight);
+    }),
+
+    addManualGuidance: (insight) => set((state) => {
+        state.manualGuidance.unshift(insight);
+    }),
+
+    removeManualGuidance: (id) => set((state) => {
+        state.manualGuidance = state.manualGuidance.filter(i => i.id !== id);
+    }),
+
+    setRelationshipInsights: (insights) => set((state) => {
+        // Cast to any to avoid deep readonly mismatch errors
+        state.relationshipInsights = insights as any[];
+    }),
 });

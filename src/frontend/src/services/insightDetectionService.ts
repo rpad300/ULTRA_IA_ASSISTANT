@@ -9,7 +9,7 @@
  * - Language-agnostic (can be configured)
  */
 
-import type { GuidanceInsight } from "@/components/sessions/MeetingGuidancePane";
+import { type GuidanceInsight, toGuidanceId } from "@/types/guidance";
 
 export interface TranscriptBlock {
     speaker: string;
@@ -243,13 +243,14 @@ function createTopicInsight(topic: string, count: number, timestamp: number, lan
     const content = messages[language][topic as keyof typeof messages.pt] || messages.pt.budget;
 
     return {
-        id: `topic-${topic}-${timestamp}`,
+        id: toGuidanceId(`topic-${topic}-${timestamp}`),
         type: 'question',
         priority: 'medium',
+        impact: 'medium',
         message: content.message,
-        context: content.context,
         timestamp,
         title: content.title,
+        scriptSource: 'Topic Detection'
     };
 }
 
@@ -274,9 +275,10 @@ function createSentimentInsight(
     const content = messages[language];
 
     return {
-        id: `sentiment-${timestamp}`,
+        id: toGuidanceId(`sentiment-${timestamp}`),
         type: 'warning',
         priority: 'high',
+        impact: 'high',
         message: content.message,
         context: content.context,
         timestamp,
@@ -301,9 +303,10 @@ function createActionInsight(action: DetectedAction, timestamp: number, language
     const content = messages[language];
 
     return {
-        id: `action-${action.id}-${timestamp}`,
+        id: toGuidanceId(`action-${action.id}-${timestamp}`),
         type: 'suggestion',
         priority: 'medium',
+        impact: 'medium',
         message: content.message,
         context: content.context,
         timestamp,
@@ -328,9 +331,10 @@ function createQuestionInsight(questions: string[], timestamp: number, language:
     const content = messages[language];
 
     return {
-        id: `question-${timestamp}`,
+        id: toGuidanceId(`question-${timestamp}`),
         type: 'response',
         priority: 'medium',
+        impact: 'medium',
         message: content.message,
         context: content.context,
         timestamp,
@@ -355,9 +359,10 @@ function createRiskInsight(risks: any[], timestamp: number, language: 'pt' | 'en
     const content = messages[language];
 
     return {
-        id: `risk-${timestamp}`,
+        id: toGuidanceId(`risk-${timestamp}`),
         type: 'warning',
         priority: 'high',
+        impact: 'high',
         message: content.message,
         context: content.context,
         timestamp,
@@ -382,13 +387,13 @@ function createClarificationInsight(clarifications: any[], timestamp: number, la
     const content = messages[language];
 
     return {
-        id: `clarification-${timestamp}`,
+        id: toGuidanceId(`clarification-${timestamp}`),
         type: 'clarification',
         priority: 'medium',
+        impact: 'medium',
         message: content.message,
         context: content.context,
         timestamp,
         title: content.title,
     };
 }
-

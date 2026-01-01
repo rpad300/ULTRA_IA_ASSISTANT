@@ -1,0 +1,49 @@
+Name: mcp-server-qdrant
+Version: 0.8.1
+Summary: MCP server for retrieving context from a Qdrant vector database
+Home-page: 
+Author: 
+Author-email: 
+License-Expression: Apache-2.0
+Location: C:\Users\rdias\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\site-packages
+Requires: fastembed, fastmcp, pydantic, qdrant-client
+Required-by: 
+Files:
+  ..\Scripts\mcp-server-qdrant.exe
+  mcp_server_qdrant-0.8.1.dist-info\INSTALLER
+  mcp_server_qdrant-0.8.1.dist-info\METADATA
+  mcp_server_qdrant-0.8.1.dist-info\RECORD
+  mcp_server_qdrant-0.8.1.dist-info\REQUESTED
+  mcp_server_qdrant-0.8.1.dist-info\WHEEL
+  mcp_server_qdrant-0.8.1.dist-info\entry_points.txt
+  mcp_server_qdrant-0.8.1.dist-info\licenses\LICENSE
+  mcp_server_qdrant\__init__.py
+  mcp_server_qdrant\__pycache__\__init__.cpython-313.pyc
+  mcp_server_qdrant\__pycache__\main.cpython-313.pyc
+  mcp_server_qdrant\__pycache__\mcp_server.cpython-313.pyc
+  mcp_server_qdrant\__pycache__\qdrant.cpython-313.pyc
+  mcp_server_qdrant\__pycache__\server.cpython-313.pyc
+  mcp_server_qdrant\__pycache__\settings.cpython-313.pyc
+  mcp_server_qdrant\common\__init__.py
+  mcp_server_qdrant\common\__pycache__\__init__.cpython-313.pyc
+  mcp_server_qdrant\common\__pycache__\filters.cpython-313.pyc
+  mcp_server_qdrant\common\__pycache__\func_tools.cpython-313.pyc
+  mcp_server_qdrant\common\__pycache__\wrap_filters.cpython-313.pyc
+  mcp_server_qdrant\common\filters.py
+  mcp_server_qdrant\common\func_tools.py
+  mcp_server_qdrant\common\wrap_filters.py
+  mcp_server_qdrant\embeddings\__init__.py
+  mcp_server_qdrant\embeddings\__pycache__\__init__.cpython-313.pyc
+  mcp_server_qdrant\embeddings\__pycache__\base.cpython-313.pyc
+  mcp_server_qdrant\embeddings\__pycache__\factory.cpython-313.pyc
+  mcp_server_qdrant\embeddings\__pycache__\fastembed.cpython-313.pyc
+  mcp_server_qdrant\embeddings\__pycache__\types.cpython-313.pyc
+  mcp_server_qdrant\embeddings\base.py
+  mcp_server_qdrant\embeddings\factory.py
+  mcp_server_qdrant\embeddings\fastembed.py
+  mcp_server_qdrant\embeddings\types.py
+  mcp_server_qdrant\main.py
+  mcp_server_qdrant\mcp_server.py
+  mcp_server_qdrant\qdrant.py
+  mcp_server_qdrant\server.py
+  mcp_server_qdrant\settings.py

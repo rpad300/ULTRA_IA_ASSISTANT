@@ -64,54 +64,90 @@ async def sync_session_summary_to_vector(session_id: str, summary_text: str, thr
     except Exception as e:
         logger.error(f"Failed to vectorize session summary: {e}")
 
+class TranscriptBuffer:
+    """
+    SOTA Accumulator for transcripts.
+    Aggregates small phrases into semantically rich chunks.
+    """
+    def __init__(self):
+        self._buffers: Dict[str, Dict] = {} # {session_id: {text, timestamp_start, count}}
+        self.MIN_WORDS = 80
+        self.MAX_WAIT_SECONDS = 15
+
+    def add(self, session_id: str, text: str) -> Optional[str]:
+        if session_id not in self._buffers:
+            self._buffers[session_id] = {
+                "text": "",
+                "created_at": datetime.now(),
+                "count": 0
+            }
+        
+        buf = self._buffers[session_id]
+        buf["text"] += " " + text
+        buf["count"] += 1
+        
+        # Check thresholds
+        word_count = len(buf["text"].split())
+        time_diff = (datetime.now() - buf["created_at"]).total_seconds()
+        
+        if word_count >= self.MIN_WORDS or time_diff > self.MAX_WAIT_SECONDS:
+            full_text = buf["text"].strip()
+            del self._buffers[session_id] # Reset
+            return full_text
+        return None
+
 class VectorizationFlow:
     def __init__(self):
         self.embedding_service = get_embedding_service()
+        self.buffer = TranscriptBuffer()
 
     async def process_transcript(
         self,
         session_id: str,
         transcript_data: Dict[str, Any],
         project_id: Optional[str] = None,
-        company_id: str = "default-company" # TODO: Get from context/auth
+        company_id: str = "default-company"
     ):
         """
         Asynchronously process a transcript block for vector search.
-        Should be called with asyncio.create_task() or similar to avoid blocking.
+        Uses Batched Accumulation for semantic density.
         """
         try:
             text = transcript_data.get("transcript") or transcript_data.get("text")
-            if not text:
-                return
+            if not text: return
+
+            # SOTA: Accumulate instead of raw fire-hose
+            # This ensures we store "Contexts" not "Fragments"
+            aggregated_text = self.buffer.add(session_id, text)
+            
+            if not aggregated_text:
+                return # Keep buffering
 
             speaker_name = transcript_data.get("speaker", "Unknown")
-            # Use timestamp as a rough created_at if not provided
             created_at = transcript_data.get("created_at") or transcript_data.get("timestamp")
-
-            # We treat the transcript id as the message_id for deduplication
-            message_id = transcript_data.get("id") or f"transcript-{session_id}-{int(transcript_data.get('timestamp', 0))}"
+            
+            # Use aggregated text for embedding
+            message_id = f"transcript-{session_id}-{int(datetime.now().timestamp())}"
 
             # Log start (debug only)
             # logger.debug(f"Starting vectorization for {message_id}")
 
-            # Use the robust EmbeddingService which handles Retry, RateLimiting, and Dual-Write
+            # Use the robust EmbeddingService
             await self.embedding_service.sync_message_to_vector(
                 message_id=message_id,
-                content=text,
+                content=aggregated_text,
                 company_id=company_id,
                 project_id=project_id,
-                thread_id=session_id, # We map Session -> Thread for RAG context
+                thread_id=session_id, 
                 author_name=speaker_name,
-                original_created_at=str(created_at)
+                original_created_at=str(created_at),
+                metadata={ 
+                    "type": "transcription_chunk", 
+                    "language": transcript_data.get("language", "en") # SOTA Metadata
+                }
             )
 
-
-            
-            # logger.debug(f"Completed vectorization for {message_id}")
-
         except Exception as e:
-            # We log error but DO NOT crash the stream. 
-            # This is critical for resilience.
             logger.error(f"Failed to vectorize transcript {session_id}: {e}")
 
     async def process_drive_file(
@@ -122,54 +158,23 @@ class VectorizationFlow:
         mime_type: str = "application/octet-stream"
     ):
         """
-        Downloads a file from Drive, extracts text, and vectorizes it.
+        SOTA Implementation: Delegating to Celery + Future-proof for Chunking.
         """
-        temp_path = None
         try:
-            logger.info(f"Starting vectorization for Drive file: {file_name} ({file_id})")
+            # Em vez de processar aqui, delegamos para o Worker que tem mais RAM/CPU
+            # Avoid circular import at top level
+            from services.tasks import sync_drive_to_vector_task
             
-            # 1. Download file
-            drive = get_drive_service()
-            if not drive:
-                logger.error("Drive service unavailable for vectorization")
-                return
-
-            file_bytes = drive.get_file_bytes(file_id)
-            if not file_bytes:
-                logger.error(f"Failed to download file {file_id}")
-                return
-
-            # Create temp file with correct extension
-            ext = os.path.splitext(file_name)[1]
-            with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as temp_file:
-                temp_file.write(file_bytes)
-                temp_path = temp_file.name
-
-            # 2. Extract Text
-            text = TextExtractionService.extract_text(temp_path)
-            if not text or len(text.strip()) == 0:
-                logger.warning(f"No text extracted from {file_name}")
-                return
-
-            # 3. Vectorize
-            # We treat files as "knowledge context" for the project
-            await self.embedding_service.sync_message_to_vector(
-                message_id=f"file-{file_id}",
-                content=f"File Content ({file_name}):\n{text}",
-                company_id="default-company", # Metadata limitation, maybe fetch project's company
-                project_id=project_id,
-                thread_id=f"project-files-{project_id}", # Virtual thread for project files
-                author_name="System",
-                original_created_at=None # Current time
+            # Dispara a tarefa no Celery
+            sync_drive_to_vector_task.delay(
+                file_id=file_id,
+                file_name=file_name,
+                project_id=project_id
             )
+            logger.info(f"Queued background vectorization for {file_name}")
             
-            logger.info(f"Successfully vectorized Drive file: {file_name}")
-
         except Exception as e:
-            logger.error(f"Failed to process drive file {file_id}: {e}", exc_info=True)
-        finally:
-            if temp_path and os.path.exists(temp_path):
-                os.remove(temp_path)
+            logger.error(f"Failed to queue drive file {file_id}: {e}", exc_info=True)
 
 # Singleton
 _vectorization_flow = None

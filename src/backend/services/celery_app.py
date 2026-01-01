@@ -28,6 +28,17 @@ celery_app.conf.update(
     task_soft_time_limit=25 * 60,  # 25 minutes
     worker_prefetch_multiplier=1,
     worker_max_tasks_per_child=1000,
+    
+    # SOTA Resilience & Reliability
+    task_acks_late=True, # Prevent data loss if worker crashes
+    task_reject_on_worker_lost=True, # Re-queue if worker dies
+    broker_connection_retry_on_startup=True, # Cloud-native resilience
+    
+    # Memory Management
+    result_expires=3600, # 1 Hour TTL to prevent Redis leaks
+    
+    # Performance
+    task_compression='gzip', # Efficient for large transcripts/embeddings
 )
 
 # Task routing

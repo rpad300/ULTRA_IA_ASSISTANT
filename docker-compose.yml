@@ -1,0 +1,56 @@
+services:
+  backend:
+    build:
+      context: ./src/backend
+      dockerfile: Dockerfile
+    container_name: ultra_backend_gpu
+    restart: unless-stopped # SOTA: Docker Guard
+    ports:
+      - "8000:8000"
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - AUDIO_SERVICE_URL=${AUDIO_SERVICE_URL:-http://host.docker.internal:8001} # Default to host for Audio Service
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+      - QDRANT_HOST=${QDRANT_HOST:-qdrant}
+      - QDRANT_PORT=6333
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - ASSEMBLYAI_API_KEY=${ASSEMBLYAI_API_KEY}
+      - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
+      - ULTRA_API_KEY=${ULTRA_API_KEY}
+    volumes:
+      - ./brain:/app/brain # Persist brain/memories
+      - ./models:/app/models # Persist huge models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      - ultra-network
+    depends_on:
+      qdrant:
+        condition: service_healthy
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: ultra_qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+    volumes:
+      - ./qdrant_data:/qdrant/storage
+    networks:
+      - ultra-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/readyz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  ultra-network:
+    driver: bridge

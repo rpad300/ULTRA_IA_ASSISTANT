@@ -1,0 +1,120 @@
+2025-12-24 14:54:04 - utils.sentry_config - INFO - [no-request-id] - Sentry not configured (SENTRY_DSN not set or not in production)
+2025-12-24 14:54:31 - managers.connection_manager - INFO - [no-request-id] - Initializing ConnectionManager (Instance ID: 95458e12-a22b-4e03-8d3f-628f1e904373)
+2025-12-24 14:54:43 - backend - INFO - [no-request-id] - Registered routes:
+2025-12-24 14:54:43 - backend - INFO - [no-request-id] -   ['GET'] /api/threads/{thread_id}/sessions
+2025-12-24 14:54:43 - backend - INFO - [no-request-id] -   ['POST'] /api/threads/{thread_id}/sessions
+2025-12-24 14:54:43 - backend - INFO - [no-request-id] -   ['POST'] /api/threads/{thread_id}/finalize
+2025-12-24 14:54:43 - backend - INFO - [no-request-id] -   ['GET'] /api/projects/{project_id}/threads
+2025-12-24 14:54:43 - backend - INFO - [no-request-id] -   ['GET'] /api/threads/{thread_id}
+2025-12-24 14:54:43 - backend - INFO - [no-request-id] -   ['DELETE'] /api/threads/{thread_id}
+2025-12-24 14:54:43 - backend - INFO - [no-request-id] -   ['POST'] /api/projects/{project_id}/threads
+2025-12-24 14:54:43 - backend - INFO - [no-request-id] -   ['GET'] /api/threads/{thread_id}/messages
+2025-12-24 14:54:43 - backend - INFO - [no-request-id] -   ['POST'] /api/threads/{thread_id}/messages
+2025-12-24 14:54:43 - backend - INFO - [no-request-id] -   [] /api/ws/threads/{thread_id}/messages
+2025-12-24 14:54:43 - __main__ - INFO - [no-request-id] - Testing GET /api/companies (Expect 200 or 500)
+2025-12-24 14:54:44 - services.drive_service - INFO - [d7e3382c-78de-42ba-8c24-a91ee749cd84] - Google Drive not authenticated. User interaction required.
+2025-12-24 14:54:45 - db.supabase_client - INFO - [d7e3382c-78de-42ba-8c24-a91ee749cd84] - [OK] Supabase Async Client Ready & Verified
+2025-12-24 14:54:45 - middleware.request_id - INFO - [d7e3382c-78de-42ba-8c24-a91ee749cd84] - Completed GET /api/companies [200] in 1.7199s
+2025-12-24 14:54:45 - __main__ - INFO - [no-request-id] - Status: 200
+2025-12-24 14:54:45 - __main__ - INFO - [no-request-id] - Response: {"items":[{"name":"QBI","description":null,"drive_root_folder_id":null,"website":"https://rpad.pt","status":"active","industry":"tech","id":"519e1c22-6945-4cbb-aa2b-0e4cbd023937","created_at":"2025-12-09T10:20:48.597488Z","updated_at":"2025-12-09T10:20:48.597488Z"}],"total":1,"page":1,"page_size":20,"total_pages":1}
+2025-12-24 14:57:18 - utils.sentry_config - INFO - [no-request-id] - Sentry not configured (SENTRY_DSN not set or not in production)
+2025-12-24 14:57:35 - managers.connection_manager - INFO - [no-request-id] - Initializing ConnectionManager (Instance ID: c6da6056-a7ba-4931-8f2d-7515be655ba3)
+2025-12-24 14:57:39 - backend - INFO - [no-request-id] - Registered routes:
+2025-12-24 14:57:39 - backend - INFO - [no-request-id] -   ['GET'] /api/threads/{thread_id}/sessions
+2025-12-24 14:57:39 - backend - INFO - [no-request-id] -   ['POST'] /api/threads/{thread_id}/sessions
+2025-12-24 14:57:39 - backend - INFO - [no-request-id] -   ['POST'] /api/threads/{thread_id}/finalize
+2025-12-24 14:57:39 - backend - INFO - [no-request-id] -   ['GET'] /api/projects/{project_id}/threads
+2025-12-24 14:57:39 - backend - INFO - [no-request-id] -   ['GET'] /api/threads/{thread_id}
+2025-12-24 14:57:39 - backend - INFO - [no-request-id] -   ['DELETE'] /api/threads/{thread_id}
+2025-12-24 14:57:39 - backend - INFO - [no-request-id] -   ['POST'] /api/projects/{project_id}/threads
+2025-12-24 14:57:39 - backend - INFO - [no-request-id] -   ['GET'] /api/threads/{thread_id}/messages
+2025-12-24 14:57:39 - backend - INFO - [no-request-id] -   ['POST'] /api/threads/{thread_id}/messages
+2025-12-24 14:57:39 - backend - INFO - [no-request-id] -   [] /api/ws/threads/{thread_id}/messages
+2025-12-24 14:57:39 - __main__ - INFO - [no-request-id] - Testing GET /api/companies (Expect 200 or 500)
+2025-12-24 14:57:39 - services.drive_service - INFO - [483101fd-27b6-41ae-b9a8-a50575c68afc] - Google Drive not authenticated. User interaction required.
+2025-12-24 14:57:41 - db.supabase_client - INFO - [483101fd-27b6-41ae-b9a8-a50575c68afc] - [OK] Supabase Async Client Ready & Verified
+2025-12-24 14:57:41 - middleware.request_id - INFO - [483101fd-27b6-41ae-b9a8-a50575c68afc] - Completed GET /api/companies [200] in 1.9758s
+2025-12-24 14:57:41 - __main__ - INFO - [no-request-id] - Status: 200
+2025-12-24 14:57:41 - __main__ - INFO - [no-request-id] - Response: {"items":[{"name":"QBI","description":null,"drive_root_folder_id":null,"website":"https://rpad.pt","status":"active","industry":"tech","id":"519e1c22-6945-4cbb-aa2b-0e4cbd023937","created_at":"2025-12-09T10:20:48.597488Z","updated_at":"2025-12-09T10:20:48.597488Z"}],"total":1,"page":1,"page_size":20,"total_pages":1}
+2025-12-30 22:11:40 - utils.sentry_config - INFO - [no-request-id] - Sentry not configured (SENTRY_DSN not set or not in production)
+2025-12-30 22:11:44 - managers.connection_manager - INFO - [no-request-id] - Initializing ConnectionManager (Instance ID: 4c675ca2-726a-4293-ba9b-7b7f8de3b5da)
+2025-12-30 22:11:45 - backend - INFO - [no-request-id] - Registered routes:
+2025-12-30 22:11:45 - backend - INFO - [no-request-id] -   ['GET'] /api/threads/{thread_id}/sessions
+2025-12-30 22:11:45 - backend - INFO - [no-request-id] -   ['POST'] /api/threads/{thread_id}/sessions
+2025-12-30 22:11:45 - backend - INFO - [no-request-id] -   ['POST'] /api/threads/{thread_id}/finalize
+2025-12-30 22:11:45 - backend - INFO - [no-request-id] -   ['GET'] /api/projects/{project_id}/threads
+2025-12-30 22:11:45 - backend - INFO - [no-request-id] -   ['GET'] /api/threads/{thread_id}
+2025-12-30 22:11:45 - backend - INFO - [no-request-id] -   ['DELETE'] /api/threads/{thread_id}
+2025-12-30 22:11:45 - backend - INFO - [no-request-id] -   ['POST'] /api/projects/{project_id}/threads
+2025-12-30 22:11:45 - backend - INFO - [no-request-id] -   ['GET'] /api/threads/{thread_id}/messages
+2025-12-30 22:11:45 - backend - INFO - [no-request-id] -   ['POST'] /api/threads/{thread_id}/messages
+2025-12-30 22:11:45 - backend - INFO - [no-request-id] -   [] /api/ws/threads/{thread_id}/messages
+2025-12-30 22:11:45 - services.chat_logic - INFO - [no-request-id] - Thread thread_1 busy. Queuing request...
+2025-12-30 22:11:45 - services.chat_logic - INFO - [no-request-id] - Agent Turn Started: thread_1
+2025-12-30 22:11:45 - services.chat_logic - INFO - [no-request-id] - Agent Turn Complete: thread_1
+2025-12-31 11:40:48 - utils.sentry_config - INFO - [no-request-id] - Sentry not configured (SENTRY_DSN not set or not in production)
+2025-12-31 11:40:52 - managers.connection_manager - INFO - [no-request-id] - Initializing ConnectionManager (Instance ID: d80bff6b-4d5f-44c9-9f25-72ea8c9d367f)
+2025-12-31 11:40:54 - backend - INFO - [no-request-id] - Registered routes:
+2025-12-31 11:40:54 - backend - INFO - [no-request-id] -   ['GET'] /api/threads/{thread_id}/sessions
+2025-12-31 11:40:54 - backend - INFO - [no-request-id] -   ['POST'] /api/threads/{thread_id}/sessions
+2025-12-31 11:40:54 - backend - INFO - [no-request-id] -   ['POST'] /api/threads/{thread_id}/finalize
+2025-12-31 11:40:54 - backend - INFO - [no-request-id] -   ['GET'] /api/projects/{project_id}/threads
+2025-12-31 11:40:54 - backend - INFO - [no-request-id] -   ['GET'] /api/threads/{thread_id}
+2025-12-31 11:40:54 - backend - INFO - [no-request-id] -   ['DELETE'] /api/threads/{thread_id}
+2025-12-31 11:40:54 - backend - INFO - [no-request-id] -   ['POST'] /api/projects/{project_id}/threads
+2025-12-31 11:40:54 - backend - INFO - [no-request-id] -   ['GET'] /api/threads/{thread_id}/messages
+2025-12-31 11:40:54 - backend - INFO - [no-request-id] -   ['POST'] /api/threads/{thread_id}/messages
+2025-12-31 11:40:54 - backend - INFO - [no-request-id] -   [] /api/ws/threads/{thread_id}/messages
+2025-12-31 11:40:54 - backend - INFO - [no-request-id] - Starting Ultra Assistant Backend...
+2025-12-31 11:40:54 - backend - INFO - [no-request-id] - Environment: development
+2025-12-31 11:40:54 - services.redis_service - INFO - [no-request-id] - Connected to Redis Cache (Binary/SOTA).
+2025-12-31 11:40:54 - managers.chat_manager - INFO - [no-request-id] - ChatManager: Distributed Mode (Redis) - Instance 4e1c62e2-c40d-48f6-974a-a04352024743
+2025-12-31 11:40:54 - services.audio_service_client - INFO - [no-request-id] - Initializing Audio Service Client (SOTA) at http://127.0.0.1:8001/api/audio-service [Monitor=False]
+2025-12-31 11:40:55 - services.drive_service - INFO - [no-request-id] - Google Drive not authenticated. User interaction required.
+2025-12-31 11:40:55 - db.supabase_client - INFO - [no-request-id] - Initializing Supabase Async Client (Attempt 1)...
+2025-12-31 11:40:55 - managers.chat_manager - INFO - [no-request-id] - Redis Subscriber Active (Instance 4e1c62e2-c40d-48f6-974a-a04352024743)
+2025-12-31 11:40:55 - managers.connection_manager - INFO - [no-request-id] - Started Distributed Redis Listener.
+2025-12-31 11:40:55 - db.supabase_client - INFO - [no-request-id] - [OK] Supabase Async Client Ready & Verified
+2025-12-31 11:40:55 - backend - INFO - [no-request-id] - Drive Watcher Auto-Discovery: Found 1 folders from 1 companies.
+2025-12-31 11:40:55 - backend - INFO - [no-request-id] - Starting Drive Watcher for Company 'ccc80ea0-19ba-4d3a-8e0d-2ffd23bd148e': ['1wK1fA1hHapqEHfVehRucd8DtUjHcv8HS']
+2025-12-31 11:40:57 - services.drive_watcher - INFO - [no-request-id] - Starting Drive Watcher for company ccc80ea0-19ba-4d3a-8e0d-2ffd23bd148e on folders ['1wK1fA1hHapqEHfVehRucd8DtUjHcv8HS']
+2025-12-31 11:40:57 - services.model_discovery_service - INFO - [no-request-id] - Starting Dynamic Model Discovery...
+2025-12-31 11:40:57 - services.qdrant_service - INFO - [no-request-id] - [OK] Qdrant Collection 'ultra_knowledge_base' ready.
+2025-12-31 11:40:57 - services.model_discovery_service - INFO - [no-request-id] - Discovered Best Model: models/gemini-3-pro-preview (Ver: 3.0, Tokens: 1048576)
+2025-12-31 11:40:58 - services.qdrant_service - INFO - [no-request-id] - [OK] Content index already exists.
+2025-12-31 11:40:58 - services.pyannote_service - WARNING - [no-request-id] - Running in MOCK IDENTITY mode due to missing dependencies.
+2025-12-31 11:40:58 - backend - INFO - [no-request-id] - Shutting down Ultra Assistant Backend...
+2025-12-31 11:40:58 - services.audio_service_client - INFO - [no-request-id] - Audio Service Client Shutdown.
+2025-12-31 11:42:51 - utils.sentry_config - INFO - [no-request-id] - Sentry not configured (SENTRY_DSN not set or not in production)
+2025-12-31 11:42:55 - managers.connection_manager - INFO - [no-request-id] - Initializing ConnectionManager (Instance ID: bb95e5c4-6870-4025-8c2c-e6d236013650)
+2025-12-31 11:42:57 - backend - INFO - [no-request-id] - Registered routes:
+2025-12-31 11:42:57 - backend - INFO - [no-request-id] -   ['GET'] /api/threads/{thread_id}/sessions
+2025-12-31 11:42:57 - backend - INFO - [no-request-id] -   ['POST'] /api/threads/{thread_id}/sessions
+2025-12-31 11:42:57 - backend - INFO - [no-request-id] -   ['POST'] /api/threads/{thread_id}/finalize
+2025-12-31 11:42:57 - backend - INFO - [no-request-id] -   ['GET'] /api/projects/{project_id}/threads
+2025-12-31 11:42:57 - backend - INFO - [no-request-id] -   ['GET'] /api/threads/{thread_id}
+2025-12-31 11:42:57 - backend - INFO - [no-request-id] -   ['DELETE'] /api/threads/{thread_id}
+2025-12-31 11:42:57 - backend - INFO - [no-request-id] -   ['POST'] /api/projects/{project_id}/threads
+2025-12-31 11:42:57 - backend - INFO - [no-request-id] -   ['GET'] /api/threads/{thread_id}/messages
+2025-12-31 11:42:57 - backend - INFO - [no-request-id] -   ['POST'] /api/threads/{thread_id}/messages
+2025-12-31 11:42:57 - backend - INFO - [no-request-id] -   [] /api/ws/threads/{thread_id}/messages
+2025-12-31 11:42:57 - backend - INFO - [no-request-id] - Starting Ultra Assistant Backend...
+2025-12-31 11:42:57 - backend - INFO - [no-request-id] - Environment: development
+2025-12-31 11:42:57 - services.redis_service - INFO - [no-request-id] - Connected to Redis Cache (Binary/SOTA).
+2025-12-31 11:42:57 - managers.chat_manager - INFO - [no-request-id] - ChatManager: Distributed Mode (Redis) - Instance 6f360dec-eb3a-4b85-a8dc-4bd0ab98e8ed
+2025-12-31 11:42:57 - services.audio_service_client - INFO - [no-request-id] - Initializing Audio Service Client (SOTA) at http://127.0.0.1:8001/api/audio-service [Monitor=False]
+2025-12-31 11:42:57 - services.drive_service - INFO - [no-request-id] - Google Drive not authenticated. User interaction required.
+2025-12-31 11:42:57 - db.supabase_client - INFO - [no-request-id] - Initializing Supabase Async Client (Attempt 1)...
+2025-12-31 11:42:58 - managers.chat_manager - INFO - [no-request-id] - Redis Subscriber Active (Instance 6f360dec-eb3a-4b85-a8dc-4bd0ab98e8ed)
+2025-12-31 11:42:58 - managers.connection_manager - INFO - [no-request-id] - Started Distributed Redis Listener.
+2025-12-31 11:42:58 - db.supabase_client - INFO - [no-request-id] - [OK] Supabase Async Client Ready & Verified
+2025-12-31 11:42:58 - backend - INFO - [no-request-id] - Drive Watcher Auto-Discovery: Found 1 folders from 1 companies.
+2025-12-31 11:42:58 - backend - INFO - [no-request-id] - Starting Drive Watcher for Company 'ccc80ea0-19ba-4d3a-8e0d-2ffd23bd148e': ['1wK1fA1hHapqEHfVehRucd8DtUjHcv8HS']
+2025-12-31 11:43:00 - services.drive_watcher - INFO - [no-request-id] - Starting Drive Watcher for company ccc80ea0-19ba-4d3a-8e0d-2ffd23bd148e on folders ['1wK1fA1hHapqEHfVehRucd8DtUjHcv8HS']
+2025-12-31 11:43:00 - services.model_discovery_service - INFO - [no-request-id] - Starting Dynamic Model Discovery...
+2025-12-31 11:43:00 - services.qdrant_service - INFO - [no-request-id] - [OK] Qdrant Collection 'ultra_knowledge_base' ready.
+2025-12-31 11:43:00 - services.model_discovery_service - INFO - [no-request-id] - Discovered Best Model: models/gemini-3-pro-preview (Ver: 3.0, Tokens: 1048576)
+2025-12-31 11:43:01 - services.qdrant_service - INFO - [no-request-id] - [OK] Content index already exists.
+2025-12-31 11:43:01 - services.pyannote_service - WARNING - [no-request-id] - Running in MOCK IDENTITY mode due to missing dependencies.
+2025-12-31 11:43:01 - backend - INFO - [no-request-id] - Shutting down Ultra Assistant Backend...
+2025-12-31 11:43:01 - services.audio_service_client - INFO - [no-request-id] - Audio Service Client Shutdown.

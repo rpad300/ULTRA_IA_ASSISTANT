@@ -1,48 +1,28 @@
-import type { StateCreator } from 'zustand';
-import type { MeetingState } from '../meetingStore';
+import type { MeetingSlice, TranscriptSlice } from '../types';
+import { workspaceApi } from '@/api/client';
 import type { TranscriptBlock } from '@/types/slices/transcript';
 
-export interface TranscriptSlice {
-    transcriptBlocks: TranscriptBlock[];
-    partialBlock: TranscriptBlock | null;
-    partialTranscript: TranscriptBlock | null; // Legacy alias
-
-    // Actions
-    handleTranscriptEvent: (data: any) => void;
-    // The original `updateSpeakerByTrace` is removed as per the instruction's provided interface snippet.
-    updateSpeakerByTrace: (traceId: string, contactId: string, name: string) => void;
-    assignSpeakerOptimistically: (traceId: string, contactId: string, contactName: string) => void;
-    clearTranscript: () => void;
-
-    // Legacy / Action
-    toggleHighlight: (blockId: string) => void;
-    loadTranscripts: (sessionId: string) => Promise<void>;
-}
-
-export const createTranscriptSlice: StateCreator<MeetingState, [], [], TranscriptSlice> = (set, get) => ({
+export const createTranscriptSlice: MeetingSlice<TranscriptSlice> = (set, get) => ({
     transcriptBlocks: [],
     partialBlock: null,
-    partialTranscript: null,
+    partialTranscript: null, // Legacy alias sync
 
     handleTranscriptEvent: (data) => {
-        // console.log('[transcriptSlice] Handling Event:', data);
-        const { transcript, text, is_final, turn_id, trace_id, speaker, speaker_id, turn_order } = data;
+        const { transcript, text, is_final, end_of_turn, turn_id, trace_id, speaker, speaker_id, turn_order, correlation_id } = data;
         const content = transcript || text;
         if (!content) return;
 
-        // Note: Assuming 'elapsedTime' is available in the store (another slice)
-        // Accessing it via get().elapsedTime if it exists in MeetingState
-        // We'll cast to any for now to avoid circular dependency issues until full merge
-        // Safely access elapsedTime if it exists, else Date.now()
-        const state = get() as any;
-        const timestamp = typeof state?.elapsedTime === 'number' ? state.elapsedTime : Date.now();
+        // Accessing sibling slice state safely
+        const state = get();
+        const timestamp = state.elapsedTime || Date.now();
 
         set((s) => {
-            // Stable ID Generation: Prefer turn_id, fallback to turn_order, fallback to timestamp
-            const stableId = turn_id || (turn_order !== undefined ? `turn-${turn_order}` : Date.now().toString());
+            // Stable ID Generation
+            const stableId = turn_id || correlation_id || (turn_order !== undefined ? `turn-${turn_order}` : Date.now().toString());
+            const isFinal = is_final ?? end_of_turn ?? false;
 
-            // 1. Lógica de Bloco Parcial (Streaming UX)
-            if (!is_final) {
+            // 1. Partial Block Logic (Streaming UX)
+            if (!isFinal) {
                 const partial = {
                     id: 'partial',
                     text: content,
@@ -52,14 +32,12 @@ export const createTranscriptSlice: StateCreator<MeetingState, [], [], Transcrip
                     timestamp: timestamp,
                     updatedAt: Date.now()
                 };
-                return {
-                    partialBlock: partial,
-                    partialTranscript: partial
-                };
+                s.partialBlock = partial;
+                s.partialTranscript = partial;
+                return;
             }
 
-            // 2. Lógica de Deduplicação e Update de Bloco Final
-            const existingIndex = s.transcriptBlocks.findIndex(b => b.id === stableId);
+            // 2. Final Block Logic
             const newBlock: TranscriptBlock = {
                 id: stableId,
                 traceId: trace_id,
@@ -71,62 +49,80 @@ export const createTranscriptSlice: StateCreator<MeetingState, [], [], Transcrip
                 updatedAt: Date.now()
             };
 
-            if (existingIndex !== -1) {
-                // Atualiza bloco existente (ex: IA melhorou a pontuação do texto final)
-                const updatedBlocks = [...s.transcriptBlocks];
-                updatedBlocks[existingIndex] = { ...updatedBlocks[existingIndex], ...newBlock };
-                return { transcriptBlocks: updatedBlocks, partialBlock: null };
+            const existingBlock = s.transcriptBlocks.find(b => b.id === stableId);
+
+            if (existingBlock) {
+                // Update existing block (e.g., AI Correction)
+                Object.assign(existingBlock, newBlock);
+            } else {
+                // Append new block
+                s.transcriptBlocks.push(newBlock);
             }
 
-            // Adiciona novo bloco
-            return {
-                transcriptBlocks: [...s.transcriptBlocks, newBlock],
-                partialBlock: null
-            };
+            // Clear partials
+            s.partialBlock = null;
+            s.partialTranscript = null;
         });
     },
 
-    updateSpeakerByTrace: (traceId: string, contactId: string, name: string) => {
-        set((state) => ({
-            // Update Retroativo: Procura todos os blocos com o rastro de voz X 
-            // e atualiza o nome do orador instantaneamente.
-            transcriptBlocks: state.transcriptBlocks.map(block =>
-                block.traceId === traceId || block.speaker === traceId
-                    ? { ...block, speaker: name, speakerId: contactId, updatedAt: Date.now() }
-                    : block
-            )
-        }));
+    updateSpeakerByTrace: (traceId, contactId, name) => {
+        set((state) => {
+            // Retroactive Update: Find all blocks with this traceId or temporary speaker name
+            state.transcriptBlocks.forEach(block => {
+                if (block.traceId === traceId || block.speaker === traceId) {
+                    block.speaker = name;
+                    block.speakerId = contactId;
+                    block.updatedAt = Date.now();
+                }
+            });
+        });
     },
 
-    assignSpeakerOptimistically: (traceId: string, contactId: string, contactName: string) => {
-        // 1. Atualização Imediata (Optimistic)
-        set((state) => ({
-            transcriptBlocks: state.transcriptBlocks.map(block =>
-                block.traceId === traceId ? { ...block, speaker: contactName, speakerId: contactId, updatedAt: Date.now() } : block
-            )
-        }));
-
-        // 2. Notificação ao Servidor -> This should be handled by the SocketManager or via Action
-        // Ideally we assume socketManager is imported or we trigger a side effect
-        // For now, we'll placeholder this or call a global if defined, but cleaner is to have a method.
-        // We will assume the component calling this also handles the socket send, OR we import socketManager here.
-        // Importing socketManager here might verify circular deps. 
-        // Let's defer strict socket sending to the UI or Manager for now to keep store pure, 
-        // Or better, import the instance if it's a singleton.
-
-        // import { socketManager } from '@/managers/socketManager'; 
-        // socketManager.send(...) 
+    assignSpeakerOptimistically: (traceId, contactId, contactName) => {
+        set((state) => {
+            state.transcriptBlocks.forEach(block => {
+                if (block.traceId === traceId) {
+                    block.speaker = contactName;
+                    block.speakerId = contactId;
+                    block.updatedAt = Date.now();
+                }
+            });
+        });
     },
 
-    clearTranscript: () => set({ transcriptBlocks: [], partialBlock: null, partialTranscript: null }),
+    clearTranscript: () => set((state) => {
+        state.transcriptBlocks = [];
+        state.partialBlock = null;
+        state.partialTranscript = null;
+    }),
 
-    toggleHighlight: (blockId: string) => set(state => ({
-        transcriptBlocks: state.transcriptBlocks.map(b =>
-            b.id === blockId ? { ...b, isHighlighted: !b.isHighlighted, updatedAt: Date.now() } : b
-        )
-    })),
+    toggleHighlight: (blockId) => set((state) => {
+        const block = state.transcriptBlocks.find(b => b.id === blockId);
+        if (block) {
+            block.isHighlighted = !block.isHighlighted;
+            block.updatedAt = Date.now();
+        }
+    }),
 
-    loadTranscripts: async (_sessionId: string) => {
-        return Promise.resolve();
+    loadTranscripts: async (sessionId) => {
+        try {
+            const data = await workspaceApi.getSessionTranscript(sessionId);
+
+            // Validate data is array
+            if (Array.isArray(data)) {
+                set((state) => {
+                    // Type-safe mapping if needed, assuming backend matches TranscriptBlock
+                    state.transcriptBlocks = data.map((block: any) => ({
+                        ...block,
+                        // Ensure required fields
+                        isFinal: true, // Loaded transcripts are historical/final
+                        timestamp: block.timestamp || 0
+                    }));
+                });
+            }
+        } catch (e) {
+            console.error("Failed to load transcripts", e);
+            // Could set empty or error state
+        }
     }
 });

@@ -15,6 +15,8 @@ async def ws_native_transcription_endpoint(
     client_id: str = Query(None),
     session_id: str = Query(None)
 ):
+    print(f"TRAP: /api/ws/native-transcription hit! Client: {client_id} Session: {session_id}")
+
     """
     SOTA Native Transcription Endpoint.
     Delegates all logic to TranscriptionManager (Producer-Consumer).

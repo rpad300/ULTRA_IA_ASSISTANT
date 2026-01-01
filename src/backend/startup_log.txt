@@ -1,0 +1,167 @@
+\U0001f6e0\ufe0f [SOTA Path] Patching torchaudio.AudioMetaData for compatibility...
+{"timestamp": "2025-12-23 22:03:01", "level": "INFO", "message": "Sentry not configured (SENTRY_DSN not set or not in production)", "request_id": "no-request-id", "module": "sentry_config", "func": "<module>", "logger": "utils.sentry_config"}
+{"timestamp": "2025-12-23 22:03:08", "level": "INFO", "message": "Registered routes:", "request_id": "no-request-id", "module": "main", "func": "<module>", "logger": "backend"}
+{"timestamp": "2025-12-23 22:03:08", "level": "INFO", "message": "  ['GET'] /api/threads/{thread_id}/sessions", "request_id": "no-request-id", "module": "main", "func": "<module>", "logger": "backend"}
+{"timestamp": "2025-12-23 22:03:08", "level": "INFO", "message": "  ['POST'] /api/threads/{thread_id}/sessions", "request_id": "no-request-id", "module": "main", "func": "<module>", "logger": "backend"}
+{"timestamp": "2025-12-23 22:03:08", "level": "INFO", "message": "  ['POST'] /api/threads/{thread_id}/finalize", "request_id": "no-request-id", "module": "main", "func": "<module>", "logger": "backend"}
+{"timestamp": "2025-12-23 22:03:08", "level": "INFO", "message": "  ['GET'] /api/projects/{project_id}/threads", "request_id": "no-request-id", "module": "main", "func": "<module>", "logger": "backend"}
+{"timestamp": "2025-12-23 22:03:08", "level": "INFO", "message": "  ['GET'] /api/threads/{thread_id}", "request_id": "no-request-id", "module": "main", "func": "<module>", "logger": "backend"}
+{"timestamp": "2025-12-23 22:03:08", "level": "INFO", "message": "  ['DELETE'] /api/threads/{thread_id}", "request_id": "no-request-id", "module": "main", "func": "<module>", "logger": "backend"}
+{"timestamp": "2025-12-23 22:03:08", "level": "INFO", "message": "  ['POST'] /api/projects/{project_id}/threads", "request_id": "no-request-id", "module": "main", "func": "<module>", "logger": "backend"}
+{"timestamp": "2025-12-23 22:03:08", "level": "INFO", "message": "  ['GET'] /api/threads/{thread_id}/messages", "request_id": "no-request-id", "module": "main", "func": "<module>", "logger": "backend"}
+{"timestamp": "2025-12-23 22:03:08", "level": "INFO", "message": "  ['POST'] /api/threads/{thread_id}/messages", "request_id": "no-request-id", "module": "main", "func": "<module>", "logger": "backend"}
+{"timestamp": "2025-12-23 22:03:08", "level": "INFO", "message": "  [] /api/ws/threads/{thread_id}/messages", "request_id": "no-request-id", "module": "main", "func": "<module>", "logger": "backend"}
+INFO:     Started server process [32208]
+INFO:     Waiting for application startup.
+{"timestamp": "2025-12-23 22:03:08", "level": "INFO", "message": "Starting Ultra Assistant Backend...", "request_id": "no-request-id", "module": "main", "func": "lifespan", "logger": "backend"}
+{"timestamp": "2025-12-23 22:03:08", "level": "INFO", "message": "Environment: development", "request_id": "no-request-id", "module": "main", "func": "lifespan", "logger": "backend"}
+{"timestamp": "2025-12-23 22:03:08", "level": "INFO", "message": "Connected to Redis Cache (Binary/SOTA).", "request_id": "no-request-id", "module": "redis_service", "func": "connect", "logger": "services.redis_service"}
+{"timestamp": "2025-12-23 22:03:08", "level": "INFO", "message": "ChatManager: Distributed Mode (Redis) - Instance 27904fa1-6025-4bfc-9345-a6c2fea88f19", "request_id": "no-request-id", "module": "chat_manager", "func": "initialize", "logger": "managers.chat_manager"}
+{"timestamp": "2025-12-23 22:03:08", "level": "INFO", "message": "Initializing Audio Service Client (SOTA) at http://127.0.0.1:8001/api/audio-service [Monitor=False]", "request_id": "no-request-id", "module": "audio_service_client", "func": "start", "logger": "services.audio_service_client"}
+{"timestamp": "2025-12-23 22:03:09", "level": "INFO", "message": "Redis Subscriber Active (Instance 27904fa1-6025-4bfc-9345-a6c2fea88f19)", "request_id": "no-request-id", "module": "chat_manager", "func": "_redis_subscriber", "logger": "managers.chat_manager"}
+{"timestamp": "2025-12-23 22:03:09", "level": "INFO", "message": "\u2705 Qdrant Collection 'ultra_knowledge_base' ready.", "request_id": "no-request-id", "module": "qdrant_service", "func": "ensure_collection", "logger": "services.qdrant_service"}
+--- Logging error ---
+Traceback (most recent call last):
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.2544.0_x64__qbz5n2kfra8p0\Lib\logging\__init__.py", line 1154, in emit
+    stream.write(msg + self.terminator)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.2544.0_x64__qbz5n2kfra8p0\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2705' in position 73: character maps to <undefined>
+Call stack:
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\.venv\Lib\site-packages\uvicorn\__main__.py", line 4, in <module>
+    uvicorn.main()
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\.venv\Lib\site-packages\click\core.py", line 1485, in __call__
+    return self.main(*args, **kwargs)
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\.venv\Lib\site-packages\click\core.py", line 1406, in main
+    rv = self.invoke(ctx)
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\.venv\Lib\site-packages\click\core.py", line 1269, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\.venv\Lib\site-packages\click\core.py", line 824, in invoke
+    return callback(*args, **kwargs)
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\.venv\Lib\site-packages\uvicorn\main.py", line 424, in main
+    run(
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\.venv\Lib\site-packages\uvicorn\main.py", line 594, in run
+    server.run()
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\.venv\Lib\site-packages\uvicorn\server.py", line 67, in run
+    return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.2544.0_x64__qbz5n2kfra8p0\Lib\asyncio\runners.py", line 195, in run
+    return runner.run(main)
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.2544.0_x64__qbz5n2kfra8p0\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.2544.0_x64__qbz5n2kfra8p0\Lib\asyncio\base_events.py", line 712, in run_until_complete
+    self.run_forever()
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.2544.0_x64__qbz5n2kfra8p0\Lib\asyncio\base_events.py", line 683, in run_forever
+    self._run_once()
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.2544.0_x64__qbz5n2kfra8p0\Lib\asyncio\base_events.py", line 2050, in _run_once
+    handle._run()
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.2544.0_x64__qbz5n2kfra8p0\Lib\asyncio\events.py", line 89, in _run
+    self._context.run(self._callback, *self._args)
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\.venv\Lib\site-packages\uvicorn\lifespan\on.py", line 86, in main
+    await app(scope, self.receive, self.send)
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\.venv\Lib\site-packages\uvicorn\middleware\proxy_headers.py", line 29, in __call__
+    return await self.app(scope, receive, send)
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\.venv\Lib\site-packages\fastapi\applications.py", line 1135, in __call__
+    await super().__call__(scope, receive, send)
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\.venv\Lib\site-packages\starlette\applications.py", line 107, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\.venv\Lib\site-packages\starlette\middleware\errors.py", line 151, in __call__
+    await self.app(scope, receive, send)
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\.venv\Lib\site-packages\starlette\middleware\base.py", line 103, in __call__
+    await self.app(scope, receive, send)
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\.venv\Lib\site-packages\starlette\middleware\base.py", line 103, in __call__
+    await self.app(scope, receive, send)
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\.venv\Lib\site-packages\starlette\middleware\base.py", line 103, in __call__
+    await self.app(scope, receive, send)
+  [Previous line repeated 1 more time]
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\.venv\Lib\site-packages\starlette\middleware\cors.py", line 77, in __call__
+    await self.app(scope, receive, send)
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\.venv\Lib\site-packages\starlette\middleware\exceptions.py", line 49, in __call__
+    await self.app(scope, receive, send)
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\.venv\Lib\site-packages\fastapi\middleware\asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\.venv\Lib\site-packages\starlette\routing.py", line 716, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\.venv\Lib\site-packages\starlette\routing.py", line 725, in app
+    await self.lifespan(scope, receive, send)
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\.venv\Lib\site-packages\starlette\routing.py", line 694, in lifespan
+    async with self.lifespan_context(app) as maybe_state:
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.2544.0_x64__qbz5n2kfra8p0\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\.venv\Lib\site-packages\fastapi\routing.py", line 202, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.2544.0_x64__qbz5n2kfra8p0\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\.venv\Lib\site-packages\fastapi\routing.py", line 202, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.2544.0_x64__qbz5n2kfra8p0\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\.venv\Lib\site-packages\fastapi\routing.py", line 202, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.2544.0_x64__qbz5n2kfra8p0\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\.venv\Lib\site-packages\fastapi\routing.py", line 202, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.2544.0_x64__qbz5n2kfra8p0\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\.venv\Lib\site-packages\fastapi\routing.py", line 202, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.2544.0_x64__qbz5n2kfra8p0\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\.venv\Lib\site-packages\fastapi\routing.py", line 202, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.2544.0_x64__qbz5n2kfra8p0\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\.venv\Lib\site-packages\fastapi\routing.py", line 202, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.2544.0_x64__qbz5n2kfra8p0\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\.venv\Lib\site-packages\fastapi\routing.py", line 202, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.2544.0_x64__qbz5n2kfra8p0\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\.venv\Lib\site-packages\fastapi\routing.py", line 202, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.2544.0_x64__qbz5n2kfra8p0\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\.venv\Lib\site-packages\fastapi\routing.py", line 202, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.2544.0_x64__qbz5n2kfra8p0\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\.venv\Lib\site-packages\fastapi\routing.py", line 202, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.2544.0_x64__qbz5n2kfra8p0\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\.venv\Lib\site-packages\fastapi\routing.py", line 202, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.2544.0_x64__qbz5n2kfra8p0\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\.venv\Lib\site-packages\fastapi\routing.py", line 202, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.2544.0_x64__qbz5n2kfra8p0\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\.venv\Lib\site-packages\fastapi\routing.py", line 202, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.2544.0_x64__qbz5n2kfra8p0\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\.venv\Lib\site-packages\fastapi\routing.py", line 202, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.2544.0_x64__qbz5n2kfra8p0\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\main.py", line 124, in lifespan
+    qs = await init_qdrant_service()
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\services\qdrant_service.py", line 181, in init_qdrant_service
+    await service.ensure_collection()
+  File "C:\Users\rdias\.gemini\antigravity\scratch\ULTRA_IA_ASSISTANT\src\backend\services\qdrant_service.py", line 67, in ensure_collection
+    logger.info(f"\u2705 Qdrant Collection '{self.collection_name}' ready.")
+Message: "\u2705 Qdrant Collection 'ultra_knowledge_base' ready."
+Arguments: ()
+INFO:     Application startup complete.
+ERROR:    [Errno 10048] error while attempting to bind on address ('0.0.0.0', 8000): [winerror 10048] normalmente s¾ Ú permitido uma utilizaþÒo de cada endereþo de socket (protocolo/endereþo de rede/porta)
+INFO:     Waiting for application shutdown.
+{"timestamp": "2025-12-23 22:03:10", "level": "INFO", "message": "Shutting down Ultra Assistant Backend...", "request_id": "no-request-id", "module": "main", "func": "lifespan", "logger": "backend"}
+{"timestamp": "2025-12-23 22:03:10", "level": "INFO", "message": "Audio Service Client Shutdown.", "request_id": "no-request-id", "module": "audio_service_client", "func": "stop", "logger": "services.audio_service_client"}
+INFO:     Application shutdown complete.

@@ -12,17 +12,19 @@ import { ThreadForm } from "@/components/threads/ThreadForm";
 export function ProjectCockpitView() {
     const { companyId, projectId } = useParams();
     const navigate = useNavigate();
-    const { fetchProject, fetchThreads } = useWorkspaceStore();
+    const { fetchProject, fetchThreads, selectCompany, selectProject } = useWorkspaceStore();
     const [project, setProject] = useState<any>(null);
     const [activeTab, setActiveTab] = useState("overview");
     const [isThreadFormOpen, setIsThreadFormOpen] = useState(false);
 
     useEffect(() => {
+        if (companyId) selectCompany(companyId);
         if (projectId) {
+            selectProject(projectId);
             fetchProject(projectId).then(p => setProject(p));
             fetchThreads(projectId);
         }
-    }, [projectId, fetchProject, fetchThreads]);
+    }, [companyId, projectId, fetchProject, fetchThreads, selectCompany, selectProject]);
 
     const [timeline, setTimeline] = useState<any[]>([]);
     const [openLoops, setOpenLoops] = useState<any[]>([]);
@@ -42,7 +44,7 @@ export function ProjectCockpitView() {
                     status: s.ended_at ? "completed" : "upcoming"
                 }));
                 setTimeline(timelineData);
-                
+
                 // Load urgent tasks as open loops
                 const tasksRes = await workspaceApi.getTasks({ project_id: projectId, status: "open" });
                 const urgentTasks = tasksRes.filter((t: any) => t.priority === "high").slice(0, 5);
@@ -51,7 +53,7 @@ export function ProjectCockpitView() {
                     priority: t.priority,
                     assignee: "—"
                 })));
-                
+
                 // Load contacts as key people (simplified)
                 try {
                     const contactsRes = await workspaceApi.getContacts();
@@ -70,7 +72,7 @@ export function ProjectCockpitView() {
                 console.error("Failed to load project data:", error);
             }
         };
-        
+
         loadProjectData();
     }, [projectId]);
 
@@ -121,8 +123,8 @@ export function ProjectCockpitView() {
                             onClick={() => setActiveTab(tab.id)}
                             className={`
                                 px-4 py-2 text-sm font-medium border-b-2 transition-colors
-                                ${activeTab === tab.id 
-                                    ? "border-primary text-foreground" 
+                                ${activeTab === tab.id
+                                    ? "border-primary text-foreground"
                                     : "border-transparent text-muted-foreground hover:text-foreground"
                                 }
                             `}
@@ -149,21 +151,21 @@ export function ProjectCockpitView() {
                                     </div>
                                 ) : (
                                     timeline.map((item, idx) => (
-                                    <div key={idx} className="flex items-start gap-4 p-3 rounded-lg border border-border">
-                                        <div className="flex flex-col items-center gap-1 min-w-[60px]">
-                                            <Calendar className="h-4 w-4 text-muted-foreground" />
-                                            <span className="text-xs">{new Date(item.date).toLocaleDateString()}</span>
-                                        </div>
-                                        <div className="flex-1">
-                                            <div className="flex items-center gap-2">
-                                                <h4 className="font-medium text-sm">{item.title}</h4>
-                                                <Badge variant={item.status === "completed" ? "secondary" : "outline"}>
-                                                    {item.status}
-                                                </Badge>
+                                        <div key={idx} className="flex items-start gap-4 p-3 rounded-lg border border-border">
+                                            <div className="flex flex-col items-center gap-1 min-w-[60px]">
+                                                <Calendar className="h-4 w-4 text-muted-foreground" />
+                                                <span className="text-xs">{new Date(item.date).toLocaleDateString()}</span>
                                             </div>
-                                            <p className="text-xs text-muted-foreground mt-1">{item.type}</p>
+                                            <div className="flex-1">
+                                                <div className="flex items-center gap-2">
+                                                    <h4 className="font-medium text-sm">{item.title}</h4>
+                                                    <Badge variant={item.status === "completed" ? "secondary" : "outline"}>
+                                                        {item.status}
+                                                    </Badge>
+                                                </div>
+                                                <p className="text-xs text-muted-foreground mt-1">{item.type}</p>
+                                            </div>
                                         </div>
-                                    </div>
                                     ))
                                 )}
                             </CardContent>
@@ -183,18 +185,18 @@ export function ProjectCockpitView() {
                                         </div>
                                     ) : (
                                         openLoops.map((loop, idx) => (
-                                        <div key={idx} className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
-                                            <AlertCircle className="h-4 w-4 text-yellow-500 mt-0.5 shrink-0" />
-                                            <div className="flex-1">
-                                                <p className="text-sm font-medium">{loop.text}</p>
-                                                <div className="flex items-center gap-2 mt-1">
-                                                    <Badge variant="outline" className="text-[10px]">
-                                                        {loop.priority}
-                                                    </Badge>
-                                                    <span className="text-xs text-muted-foreground">{loop.assignee}</span>
+                                            <div key={idx} className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
+                                                <AlertCircle className="h-4 w-4 text-yellow-500 mt-0.5 shrink-0" />
+                                                <div className="flex-1">
+                                                    <p className="text-sm font-medium">{loop.text}</p>
+                                                    <div className="flex items-center gap-2 mt-1">
+                                                        <Badge variant="outline" className="text-[10px]">
+                                                            {loop.priority}
+                                                        </Badge>
+                                                        <span className="text-xs text-muted-foreground">{loop.assignee}</span>
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
                                         ))
                                     )}
                                 </CardContent>
@@ -213,18 +215,18 @@ export function ProjectCockpitView() {
                                         </div>
                                     ) : (
                                         keyPeople.map((person, idx) => (
-                                        <div key={idx} className="flex items-center gap-3 p-3 rounded-lg border border-border hover:bg-accent/50 transition-colors cursor-pointer">
-                                            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium">
-                                                {person.name.substring(0, 2).toUpperCase()}
+                                            <div key={idx} className="flex items-center gap-3 p-3 rounded-lg border border-border hover:bg-accent/50 transition-colors cursor-pointer">
+                                                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium">
+                                                    {person.name.substring(0, 2).toUpperCase()}
+                                                </div>
+                                                <div className="flex-1">
+                                                    <p className="text-sm font-medium">{person.name}</p>
+                                                    <p className="text-xs text-muted-foreground">{person.role}</p>
+                                                </div>
+                                                <Badge variant="secondary" className="text-xs">
+                                                    {person.meetings} meetings
+                                                </Badge>
                                             </div>
-                                            <div className="flex-1">
-                                                <p className="text-sm font-medium">{person.name}</p>
-                                                <p className="text-xs text-muted-foreground">{person.role}</p>
-                                            </div>
-                                            <Badge variant="secondary" className="text-xs">
-                                                {person.meetings} meetings
-                                            </Badge>
-                                        </div>
                                         ))
                                     )}
                                 </CardContent>
@@ -279,7 +281,7 @@ function ProjectInsightsTab({ projectId }: { projectId?: string }) {
                 setIsLoading(false);
                 return;
             }
-            
+
             setIsLoading(true);
             try {
                 const res = await workspaceApi.get(`/analytics/projects/${projectId}/insights`);
@@ -291,7 +293,7 @@ function ProjectInsightsTab({ projectId }: { projectId?: string }) {
                 setIsLoading(false);
             }
         };
-        
+
         loadInsights();
     }, [projectId]);
 

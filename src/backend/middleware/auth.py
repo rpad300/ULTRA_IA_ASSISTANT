@@ -1,147 +1,100 @@
-"""
-Authentication and Authorization Middleware
-Handles JWT token validation and user context injection
-Integrates with Supabase Auth for production
-"""
 
 import jwt
 import logging
 from typing import Optional
-from fastapi import HTTPException, Security, Depends
+from fastapi import HTTPException, Security, Depends, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from config import ENVIRONMENT, SUPABASE_URL, SUPABASE_JWT_SECRET
-from db.supabase_client import get_supabase_client
+from config import ENVIRONMENT, SUPABASE_JWT_SECRET
+from services.redis_service import get_redis_service
+from db.supabase_client import get_async_supabase_client
 
 logger = logging.getLogger(__name__)
-
-# For MVP, we'll use a simple token validation
-# In production, integrate with Supabase Auth or your auth provider
 security = HTTPBearer(auto_error=False)
 
-
 async def get_current_user(
+    request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Security(security)
 ) -> Optional[dict]:
     """
-    Extract and validate JWT token from Authorization header.
-    Returns user context dict with user_id, company_id, etc.
-    
-    In production, validates JWT token with Supabase Auth.
-    In development, allows requests without auth for easier testing.
+    SOTA Auth: JWT Validation + Redis Cached Permissions.
     """
+    # 1. Bypass em Dev
     if not credentials:
-        # In development, allow requests without auth
         if ENVIRONMENT == "development":
-            return {
-                "user_id": "dev-user",
-                "user_id": "dev-user",
-                "company_id": "dev-company-id",  # Default for dev
-                "company_ids": ["dev-company-id"],
-                "email": "dev@example.com"
-            }
-        raise HTTPException(
-            status_code=401,
-            detail="Authentication required",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    
+            dev_user = {"user_id": "dev-user", "company_id": "dev-company-id", "company_ids": ["dev-company-id"]}
+            request.state.user = dev_user
+            return dev_user
+        raise HTTPException(status_code=401, detail="Auth Required")
+
     token = credentials.credentials
-    
+    # Get Redis service instance (it is an async retrieval, but the service methods are what matters)
+    redis = await get_redis_service()
+
     try:
-        # In development, accept any token for easier testing
-        if ENVIRONMENT == "development":
-            # Simple validation - in production, verify with Supabase
-            return {
-                "user_id": "dev-user",
-                "user_id": "dev-user",
-                "company_id": "dev-company-id",
-                "company_ids": ["dev-company-id"],
-                "email": "dev@example.com"
+        # 2. Descodificação Rápida (Local)
+        # SOTA: Validar o campo 'aud' (audience) que o Supabase define como 'authenticated'
+        decoded = jwt.decode(
+            token, 
+            SUPABASE_JWT_SECRET, 
+            algorithms=["HS256"], 
+            # Note: Verify audience might need to be true in prod if audience is strictly 'authenticated'
+            options={"verify_aud": False} 
+        )
+        user_id = decoded.get("sub")
+        email = decoded.get("email")
+
+        # 3. Cache-First Permissions Check (Fórmula 1 Performance)
+        cache_key = f"auth:permissions:{user_id}"
+        permissions = await redis.get_json(cache_key) if redis else None
+
+        if not permissions:
+            # SOTA: Fetch Assíncrono apenas se necessário
+            try:
+                supabase = await get_async_supabase_client()
+                # Use .limit(1) logic or just .execute() for list. filtering by user_id should return list.
+                res = await supabase.table("user_companies").select("company_id").eq("user_id", user_id).execute()
+                company_ids = [c["company_id"] for c in (res.data or [])]
+            except Exception as db_err:
+                logger.error(f"Auth DB Error for {user_id}: {db_err}")
+                company_ids = []
+            
+            permissions = {
+                "user_id": user_id,
+                "email": email,
+                "company_ids": company_ids,
+                "company_id": company_ids[0] if company_ids else None
             }
-        
-        # Production: Validate with Supabase Auth
-        if SUPABASE_JWT_SECRET:
-            # Validate JWT directly using the secret
-            try:
-                decoded = jwt.decode(token, SUPABASE_JWT_SECRET, algorithms=["HS256"])
-                user_id = decoded.get("sub")
-                
-                # Get user's companies from database
-                supabase = get_supabase_client()
-                companies_response = supabase.table("user_companies").select("company_id, role").eq("user_id", user_id).execute()
-                company_ids = [c["company_id"] for c in (companies_response.data or [])]
-                
-                return {
-                    "user_id": user_id,
-                    "email": decoded.get("email"),
-                    "company_ids": company_ids,
-                    "company_id": company_ids[0] if company_ids else None
-                }
-            except jwt.ExpiredSignatureError:
-                raise HTTPException(status_code=401, detail="Token expired")
-            except jwt.InvalidTokenError as e:
-                logger.warning(f"Invalid JWT token: {e}")
-                raise HTTPException(status_code=401, detail="Invalid token")
-        else:
-            # Fallback: Use Supabase client to verify token
-            logger.info("SUPABASE_JWT_SECRET not set, using Supabase client for validation")
-            supabase = get_supabase_client()
-            try:
-                # Get user from Supabase Auth
-                user_response = supabase.auth.get_user(token)
-                if user_response.user:
-                    user = user_response.user
-                    # Get user's companies
-                    companies_response = supabase.table("user_companies").select("company_id, role").eq("user_id", user.id).execute()
-                    company_ids = [c["company_id"] for c in (companies_response.data or [])]
-                    
-                    return {
-                        "user_id": user.id,
-                        "email": user.email,
-                        "company_ids": company_ids,
-                        "company_id": company_ids[0] if company_ids else None
-                    }
-            except Exception as e:
-                logger.error(f"Supabase auth validation error: {e}")
-                raise HTTPException(status_code=401, detail="Invalid token")
-        
+            
+            # Guardar em cache por 5 minutos
+            if redis:
+                await redis.set_json(cache_key, permissions, ttl_seconds=300)
+
+        # 4. Injetar no Request State para acesso global
+        request.state.user = permissions
+        return permissions
+
     except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
-    except HTTPException:
-        raise
+        raise HTTPException(status_code=401, detail="Token Expired")
     except Exception as e:
-        logger.error(f"Auth error: {e}", exc_info=True)
-        raise HTTPException(status_code=401, detail="Authentication failed")
+        logger.error(f"Auth Shield Breach: {e}")
+        raise HTTPException(status_code=401, detail="Invalid Identity")
 
-
-async def require_auth(
-    current_user: dict = Depends(get_current_user)
-) -> dict:
-    """Dependency that requires authentication."""
-    if not current_user:
-        raise HTTPException(status_code=401, detail="Authentication required")
-    return current_user
-
-
-def get_company_id_from_request(
-    current_user: dict = Depends(get_current_user),
-    company_id: Optional[str] = None
+def get_company_context(
+    requested_id: Optional[str] = None,
+    user: dict = Depends(get_current_user)
 ) -> str:
     """
-    Extract company_id from user context or request parameter.
-    Ensures multi-tenancy isolation.
+    SOTA Multi-tenancy Guard.
+    Garante isolamento total de dados.
     """
-    # Priority: request param > user context > None
-    if company_id:
-        return company_id
+    target_id = requested_id or user.get("company_id")
     
-    if current_user and current_user.get("company_id"):
-        return current_user["company_id"]
-    
-    raise HTTPException(
-        status_code=400,
-        detail="company_id is required"
-    )
+    if not target_id:
+        raise HTTPException(status_code=400, detail="No company context")
 
+    # VALIDAÇÃO CRÍTICA: O utilizador tem permissão para esta empresa?
+    if target_id not in user.get("company_ids", []):
+        logger.warning(f"🚨 ALERT: User {user.get('user_id')} tried to access Company {target_id}")
+        raise HTTPException(status_code=403, detail="Access Denied to this Workspace")
+
+    return target_id

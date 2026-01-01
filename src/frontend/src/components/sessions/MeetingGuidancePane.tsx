@@ -1,135 +1,254 @@
-import { useEffect, useState } from "react";
+
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { MessageSquare, AlertCircle, Lightbulb, CheckCircle2, AlertTriangle, Brain, Sparkles, X } from "lucide-react";
+import {
+    MessageSquare, AlertCircle, Lightbulb, CheckCircle2,
+    AlertTriangle, Brain, Sparkles, Copy, Check, History as HistoryIcon,
+    ArrowRight, Activity, Zap
+} from "lucide-react";
+import * as Icons from "lucide-react"; // For dynamic action icons
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { useMeetingStore } from "@/store/meetingStore";
-import { useWorkspaceStore } from "@/store/workspaceStore";
 import { motion, AnimatePresence } from "framer-motion";
+import { useGuidanceEngine } from "@/hooks/useGuidanceEngine";
+import { useGuidanceActions } from "@/hooks/useGuidanceActions";
+import type { GuidanceInsight } from "@/types/guidance";
+import type { ActionConfig } from "@/types/slices/ui";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
-export interface GuidanceInsight {
-    id: string;
-    type: 'question' | 'warning' | 'suggestion' | 'response' | 'clarification' | 'behavior';
-    priority: 'high' | 'medium' | 'low';
-    title: string;
-    message: string;
-    context?: string;
-    timestamp: number;
-}
+function GuidanceCard({
+    insight,
+    onDismiss,
+    showDismiss = true
+}: {
+    insight: GuidanceInsight;
+    index: number;
+    onDismiss?: (id: string) => void;
+    showDismiss?: boolean;
+}) {
+    const [copied, setCopied] = useState(false);
+    const [showReasoning, setShowReasoning] = useState(false);
+    const { executeAction } = useGuidanceActions(); // SOTA Action Handler
 
-function GuidanceCard({ insight, index, onDismiss }: { insight: GuidanceInsight; index: number; onDismiss: (id: string) => void }) {
+    const handleCopy = async () => {
+        let textToCopy = insight.message;
+        const match = textToCopy.match(/["“](.*?)["”]/); // Extract content inside quotes if present
+        if (match && match[1]) {
+            textToCopy = match[1];
+        }
+
+        try {
+            await navigator.clipboard.writeText(textToCopy);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        } catch (err) {
+            console.error("Failed to copy", err);
+        }
+    };
+
+    const handleAction = (action: ActionConfig) => {
+        executeAction(action);
+    };
+
     const getTypeConfig = (type: string) => {
         switch (type) {
             case 'question':
                 return {
                     icon: MessageSquare,
-                    color: "bg-blue-500/10 text-blue-500 border-blue-500/20",
-                    iconColor: "text-blue-500"
+                    color: "bg-[oklch(0.95_0.05_240)] text-[oklch(0.6_0.15_240)] border-[oklch(0.8_0.1_240)]",
+                    gradient: "from-[oklch(0.98_0.02_240)] to-[oklch(0.95_0.05_240)]"
                 };
             case 'warning':
                 return {
                     icon: AlertTriangle,
-                    color: "bg-red-500/10 text-red-500 border-red-500/20",
-                    iconColor: "text-red-500"
+                    color: "bg-[oklch(0.95_0.05_30)] text-[oklch(0.6_0.2_30)] border-[oklch(0.8_0.15_30)]",
+                    gradient: "from-[oklch(0.98_0.02_30)] to-[oklch(0.95_0.05_30)]"
                 };
             case 'suggestion':
                 return {
                     icon: Lightbulb,
-                    color: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
-                    iconColor: "text-yellow-500"
+                    color: "bg-[oklch(0.98_0.05_85)] text-[oklch(0.6_0.18_85)] border-[oklch(0.85_0.12_85)]",
+                    gradient: "from-[oklch(0.99_0.02_85)] to-[oklch(0.95_0.08_85)]"
                 };
             case 'response':
                 return {
                     icon: CheckCircle2,
-                    color: "bg-green-500/10 text-green-500 border-green-500/20",
-                    iconColor: "text-green-500"
+                    color: "bg-[oklch(0.96_0.05_140)] text-[oklch(0.55_0.15_140)] border-[oklch(0.8_0.1_140)]",
+                    gradient: "from-[oklch(0.99_0.02_140)] to-[oklch(0.96_0.06_140)]"
                 };
             case 'clarification':
                 return {
                     icon: AlertCircle,
-                    color: "bg-orange-500/10 text-orange-500 border-orange-500/20",
-                    iconColor: "text-orange-500"
+                    color: "bg-[oklch(0.96_0.04_50)] text-[oklch(0.6_0.15_50)] border-[oklch(0.85_0.1_50)]",
+                    gradient: "from-[oklch(0.99_0.02_50)] to-[oklch(0.96_0.05_50)]"
                 };
             case 'behavior':
                 return {
-                    icon: Brain,
-                    color: "bg-purple-500/10 text-purple-500 border-purple-500/20",
-                    iconColor: "text-purple-500"
+                    icon: Activity,
+                    color: "bg-[oklch(0.96_0.08_280)] text-[oklch(0.6_0.2_280)] border-[oklch(0.85_0.15_280)]",
+                    gradient: "from-[oklch(0.99_0.02_280)] to-[oklch(0.96_0.08_280)]"
                 };
             default:
                 return {
                     icon: Sparkles,
                     color: "bg-muted text-muted-foreground border-border",
-                    iconColor: "text-muted-foreground"
+                    gradient: "from-background to-muted/50"
                 };
-        }
-    };
-
-    const getPriorityBadge = (priority: string) => {
-        switch (priority) {
-            case 'high':
-                return "bg-red-500/20 text-red-500 border-red-500/40";
-            case 'medium':
-                return "bg-orange-500/20 text-orange-500 border-orange-500/40";
-            case 'low':
-                return "bg-blue-500/20 text-blue-500 border-blue-500/40";
-            default:
-                return "bg-muted text-muted-foreground border-border";
         }
     };
 
     const config = getTypeConfig(insight.type);
     const Icon = config.icon;
+    const isHighImpact = insight.impact === 'high';
+    const confidence = insight.confidence || 85;
+
+    // Dynamic Icon for Action
+    const getActionIcon = (iconName?: string) => {
+        if (!iconName) return Zap;
+        // @ts-ignore - Dynamic access to Lucide icons
+        return Icons[iconName] || Zap;
+    };
 
     return (
         <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            transition={{ delay: index * 0.05 }}
-            whileHover={{ scale: 1.01 }}
+            initial={{ opacity: 0, x: -20 }}
+            animate={{
+                opacity: 1,
+                x: isHighImpact && showDismiss ? [0, -2, 2, -2, 2, 0] : 0 // Subtle rattle for high impact
+            }}
+            exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+            transition={{ duration: 0.4, type: "tween" }}
+            layout
+            className="group relative"
         >
+            {/* Impact Glow */}
+            <div className={cn(
+                "absolute -inset-0.5 rounded-lg opacity-0 transition-opacity duration-500 blur-sm",
+                isHighImpact && showDismiss ? "bg-gradient-to-r from-[oklch(0.6_0.2_30)] to-[oklch(0.7_0.2_50)] opacity-40 animate-pulse" : ""
+            )} />
+
             <Card className={cn(
-                "border-l-4 transition-all",
+                "relative border-l-4 transition-all overflow-hidden backdrop-blur-sm bg-white/90 dark:bg-black/40",
                 config.color,
-                insight.priority === 'high' && "shadow-lg border-l-4 border-l-red-500"
+                isHighImpact && "shadow-md border-l-[oklch(0.6_0.2_30)]",
+                !showDismiss && "opacity-80 grayscale-[0.3]"
             )}>
-                <CardContent className="p-3">
-                    <div className="flex items-start gap-2">
-                        <div className={cn("p-1.5 rounded-lg bg-background/50 shrink-0", config.iconColor)}>
-                            <Icon className="h-3.5 w-3.5" />
+                <div className={cn("absolute inset-0 opacity-40 bg-gradient-to-br", config.gradient)} />
+
+                <CardContent className="relative p-3.5">
+                    <div className="flex items-start gap-3">
+                        {/* Icon Box */}
+                        <div className={cn(
+                            "p-2 rounded-xl shrink-0 shadow-sm border bg-background/80 flex flex-col items-center justify-center gap-1",
+                            config.color.split(' ')[1]
+                        )}>
+                            <Icon className="h-4 w-4" />
+                            {isHighImpact && <span className="text-[9px] font-bold uppercase tracking-wider">IMP</span>}
                         </div>
-                        <div className="flex-1 space-y-1.5 min-w-0">
-                            <div className="flex items-start justify-between gap-2">
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 mb-1.5">
-                                        <h4 className="font-bold text-sm">{insight.title}</h4>
-                                        <Badge variant="outline" className={cn("text-[10px] px-1.5 py-0 shrink-0", getPriorityBadge(insight.priority))}>
-                                            {insight.priority}
-                                        </Badge>
-                                    </div>
-                                    <div className="bg-primary/10 border border-primary/20 rounded-md p-2.5 mb-1.5">
-                                        <p className="text-xs font-medium text-foreground leading-relaxed whitespace-pre-wrap">
-                                            {insight.message}
-                                        </p>
-                                    </div>
-                                    {insight.context && (
-                                        <p className="text-[11px] text-muted-foreground leading-relaxed">
-                                            <span className="font-semibold">Porquê:</span> {insight.context}
-                                        </p>
-                                    )}
+
+                        <div className="flex-1 min-w-0 space-y-1.5">
+                            {/* Header */}
+                            <div className="flex items-center justify-between gap-2">
+                                <h4 className="font-bold text-sm tracking-tight text-foreground/90 leading-tight">
+                                    {insight.title}
+                                </h4>
+                                <div className="flex items-center gap-1.5">
+                                    <span className="text-[10px] font-mono text-muted-foreground/70 flex items-center gap-0.5">
+                                        <Brain className="h-2.5 w-2.5" />
+                                        {confidence}%
+                                    </span>
                                 </div>
+                            </div>
+
+                            {/* Message Body */}
+                            <p className="text-xs font-medium text-foreground/80 leading-relaxed whitespace-pre-wrap">
+                                {insight.message}
+                            </p>
+
+                            {/* Context & Reasoning Chain */}
+                            <div className="space-y-1.5 pt-1">
+                                {(insight as any).context && (
+                                    <div className="flex items-start gap-1.5 text-[10px] text-muted-foreground/80">
+                                        <ArrowRight className="h-3 w-3 shrink-0 mt-0.5 opacity-50" />
+                                        <span>{(insight as any).context}</span>
+                                    </div>
+                                )}
+
+                                {insight.reasoningChain && insight.reasoningChain.length > 0 && (
+                                    <div className="pt-1">
+                                        <button
+                                            onClick={() => setShowReasoning(!showReasoning)}
+                                            className="text-[10px] flex items-center gap-1 text-primary/70 hover:text-primary transition-colors font-medium border-b border-dashed border-primary/30 pb-0.5"
+                                        >
+                                            <Brain className="h-2.5 w-2.5" />
+                                            Ver Raciocínio ({insight.reasoningChain.length} passos)
+                                        </button>
+
+                                        <AnimatePresence>
+                                            {showReasoning && (
+                                                <motion.div
+                                                    initial={{ opacity: 0, height: 0 }}
+                                                    animate={{ opacity: 1, height: 'auto' }}
+                                                    exit={{ opacity: 0, height: 0 }}
+                                                    className="pl-2 border-l-2 border-primary/10 mt-1.5 space-y-1 overflow-hidden"
+                                                >
+                                                    {insight.reasoningChain.map((step, idx) => (
+                                                        <div key={idx} className="text-[9px] text-muted-foreground leading-snug">
+                                                            {idx + 1}. {step}
+                                                        </div>
+                                                    ))}
+                                                </motion.div>
+                                            )}
+                                        </AnimatePresence>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Action Buttons (Executable Guidance) */}
+                            {insight.actions && insight.actions.length > 0 && (
+                                <div className="flex flex-wrap gap-2 mt-2 pt-2 border-t border-black/5 dark:border-white/5">
+                                    {insight.actions.map((action, idx) => {
+                                        const ActionIcon = getActionIcon(action.icon);
+                                        return (
+                                            <Button
+                                                key={idx}
+                                                variant="default" // Primary Action
+                                                size="sm"
+                                                className="h-7 text-xs gap-1.5 shadow-sm bg-primary/90 hover:bg-primary"
+                                                onClick={() => handleAction(action)}
+                                            >
+                                                <ActionIcon className="h-3 w-3" />
+                                                {action.label}
+                                            </Button>
+                                        );
+                                    })}
+                                </div>
+                            )}
+
+                            {/* Standard Footer Actions */}
+                            <div className="flex items-center gap-2 mt-3 pt-1">
                                 <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-7 w-7 shrink-0 opacity-70 hover:opacity-100"
-                                    onClick={() => onDismiss(insight.id)}
-                                    aria-label={`Marcar "${insight.title}" como feito`}
-                                    title="Marcar como feito"
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-6 text-[10px] gap-1.5 bg-background/50 hover:bg-background/80 border-primary/10 hover:border-primary/20 transition-all font-medium"
+                                    onClick={handleCopy}
                                 >
-                                    <X className="h-3.5 w-3.5" aria-hidden="true" />
+                                    {copied ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                                    {copied ? "Copiado" : "Copiar Script"}
                                 </Button>
+
+                                {showDismiss && onDismiss && (
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-6 ml-auto text-[10px] text-muted-foreground hover:text-foreground opacity-60 hover:opacity-100 transition-opacity"
+                                        onClick={() => onDismiss(insight.id)}
+                                    >
+                                        Ignorar
+                                    </Button>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -140,327 +259,116 @@ function GuidanceCard({ insight, index, onDismiss }: { insight: GuidanceInsight;
 }
 
 export function MeetingGuidancePane() {
-    const { transcriptBlocks, detectedActions, risks, clarifications, participants } = useMeetingStore();
-    const { selectedThreadId, messages } = useWorkspaceStore();
-    const [guidanceInsights, setGuidanceInsights] = useState<GuidanceInsight[]>([]);
-    const [dismissedInsights, setDismissedInsights] = useState<Set<string>>(new Set());
+    const { insights, history, dismissInsight, dismissedCount } = useGuidanceEngine();
 
-    const handleDismiss = (id: string) => {
-        setDismissedInsights(prev => new Set([...prev, id]));
-    };
-
-    // Analyze context and generate guidance
     useEffect(() => {
-        const generateGuidance = () => {
-            const insights: GuidanceInsight[] = [];
-            const now = Date.now();
-
-            // Get thread context from preparation messages
-            const threadContext = selectedThreadId
-                ? messages
-                    // @ts-ignore - thread_id missing in Message type definition but present in API response
-                    .filter(m => m.thread_id === selectedThreadId)
-                    .map(m => m.content)
-                    .join(' ')
-                : '';
-
-            // Get recent transcript (last 10 blocks)
-            const recentTranscript = transcriptBlocks.slice(-10);
-            const recentText = recentTranscript.map(b => b.text).join(' ');
-
-            // Analyze what's being discussed
-            const recentSentiment = recentTranscript.map(b => b.sentiment || 'neutral');
-            const negativeCount = recentSentiment.filter(s => s === 'negative').length;
-            const positiveCount = recentSentiment.filter(s => s === 'positive').length;
-
-            // 1. Questions to ask based on thread context - EXPLICIT SCRIPTS WITH DETAILED CONTEXT
-            if (threadContext) {
-                // Extract specific mentions from context
-                const contextLines = threadContext.split('\n').filter(l => l.trim().length > 0);
-                const budgetMentions = contextLines.filter(l => l.toLowerCase().includes('budget') || l.toLowerCase().includes('orçamento'));
-                const timelineMentions = contextLines.filter(l => l.toLowerCase().includes('timeline') || l.toLowerCase().includes('prazo') || l.toLowerCase().includes('deadline'));
-
-                // Check if budget was mentioned in context but not in meeting
-                if (budgetMentions.length > 0 && !recentText.toLowerCase().includes('budget') && !recentText.toLowerCase().includes('orçamento')) {
-                    const mention = budgetMentions[0].substring(0, 100);
-                    insights.push({
-                        id: `q-${now}-1`,
-                        type: 'question',
-                        priority: 'high',
-                        title: 'PERGUNTE SOBRE O ORÇAMENTO',
-                        message: 'PERGUNTE: "Podemos confirmar o status do orçamento? Qual é a situação atual e há alguma preocupação que precisamos abordar?"',
-                        context: `Na preparação foi mencionado: "${mention}..." mas ainda não foi discutido na reunião`,
-                        timestamp: now
-                    });
-                }
-
-                // Check if timeline was mentioned in context but not in meeting
-                if (timelineMentions.length > 0
-                    && !recentText.toLowerCase().includes('timeline')
-                    && !recentText.toLowerCase().includes('prazo')
-                    && !recentText.toLowerCase().includes('deadline')
-                    && !recentText.toLowerCase().includes('cronograma')) {
-                    const mention = timelineMentions[0].substring(0, 100);
-                    insights.push({
-                        id: `q-${now}-2`,
-                        type: 'question',
-                        priority: 'high',
-                        title: 'PERGUNTE SOBRE O PRAZO',
-                        message: 'PERGUNTE: "Podemos revisar o cronograma? O prazo ainda está viável ou precisamos ajustar alguma coisa?"',
-                        context: `Na preparação foi mencionado: "${mention}..." mas ainda não foi discutido na reunião`,
-                        timestamp: now
-                    });
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.altKey && e.key >= '1' && e.key <= '9') {
+                const index = parseInt(e.key) - 1;
+                if (index < insights.length) {
+                    dismissInsight(insights[index].id);
                 }
             }
-
-            // 2. Warnings about negative sentiment - EXPLICIT SCRIPT WITH CONTEXT
-            if (negativeCount > positiveCount && recentTranscript.length > 3) {
-                const negativeBlocks = recentTranscript.filter(b => b.sentiment === 'negative');
-                const negativeExamples = negativeBlocks.slice(-2).map(b =>
-                    `${b.speaker}: "${b.text.substring(0, 60)}..."`
-                ).join(' | ');
-
-                insights.push({
-                    id: `w-${now}-1`,
-                    type: 'warning',
-                    priority: 'high',
-                    title: 'ABORDAR TOM NEGATIVO',
-                    message: 'DIGA: "Vejo que há algumas preocupações. Podemos abordar estas questões diretamente? O que podemos fazer para resolver isso?"',
-                    context: `${negativeCount} de ${recentTranscript.length} mensagens recentes com sentimento negativo. Exemplos: ${negativeExamples}`,
-                    timestamp: now
-                });
-            }
-
-            // 3. Suggestions based on detected actions - EXPLICIT SCRIPT
-            if (detectedActions.length > 0 && detectedActions[detectedActions.length - 1].confirmed === false) {
-                const lastAction = detectedActions[detectedActions.length - 1];
-                insights.push({
-                    id: `s-${now}-1`,
-                    type: 'suggestion',
-                    priority: 'medium',
-                    title: 'CONFIRMAR AÇÃO DETECTADA',
-                    message: `DIGA: "Entendi que precisamos ${lastAction.text.toLowerCase()}. Podemos confirmar quem será responsável e qual é o prazo?"`,
-                    context: 'Ação detectada automaticamente',
-                    timestamp: now
-                });
-            }
-
-            // 4. Response suggestions based on questions asked - EXPLICIT SCRIPT WITH CONTEXT
-            const questionKeywords = ['?', 'pergunta', 'question', 'como', 'quando', 'onde', 'quem', 'por que', 'why', 'how', 'when', 'where', 'who'];
-            const hasQuestions = recentTranscript.some(b =>
-                questionKeywords.some(keyword => b.text.toLowerCase().includes(keyword))
-            );
-
-            if (hasQuestions && recentTranscript.length > 0) {
-                const lastBlock = recentTranscript[recentTranscript.length - 1];
-                if (lastBlock.speaker !== 'You' && questionKeywords.some(k => lastBlock.text.includes(k))) {
-                    const questionText = lastBlock.text.substring(0, 150);
-
-                    // Check if there's relevant context in thread preparation
-                    let contextInfo = `Pergunta feita por ${lastBlock.speaker}`;
-                    if (threadContext) {
-                        const questionLower = questionText.toLowerCase();
-                        const relevantContext = threadContext.split('\n').find(line => {
-                            const lineLower = line.toLowerCase();
-                            return questionLower.split(' ').some(word =>
-                                word.length > 4 && lineLower.includes(word)
-                            );
-                        });
-                        if (relevantContext) {
-                            contextInfo = `${lastBlock.speaker} perguntou sobre isso. Na preparação havia: "${relevantContext.substring(0, 80)}..."`;
-                        }
-                    }
-
-                    insights.push({
-                        id: `r-${now}-1`,
-                        type: 'response',
-                        priority: 'high',
-                        title: 'RESPONDER À PERGUNTA',
-                        message: `RESPONDA: "${questionText}" - Forneça uma resposta clara e completa. Se não souber, diga: "Vou verificar e retorno com uma resposta precisa."`,
-                        context: contextInfo,
-                        timestamp: now
-                    });
-                }
-            }
-
-            // 5. Clarifications needed - EXPLICIT SCRIPT
-            if (clarifications.length > 0) {
-                const lastClarification = clarifications[clarifications.length - 1];
-                insights.push({
-                    id: `c-${now}-1`,
-                    type: 'clarification',
-                    priority: 'medium',
-                    title: 'CLARIFICAR PONTO IMPORTANTE',
-                    message: `PERGUNTE: "${lastClarification.suggestion}" - Certifique-se de obter uma confirmação explícita.`,
-                    context: lastClarification.context,
-                    timestamp: now
-                });
-            }
-
-            // 6. Behavioral guidance based on participation - EXPLICIT SCRIPT
-            const uniqueSpeakers = new Set(recentTranscript.map(b => b.speaker)).size;
-            if (uniqueSpeakers < 2 && recentTranscript.length > 5) {
-                const otherParticipants = participants.filter(p => !recentTranscript.some(b => b.speaker === p.name || b.speaker === p.speakerId));
-                const participantName = otherParticipants.length > 0 ? otherParticipants[0].name || otherParticipants[0].speakerId : 'outros participantes';
-                insights.push({
-                    id: `b-${now}-1`,
-                    type: 'behavior',
-                    priority: 'medium',
-                    title: 'ENVOLVER OUTROS PARTICIPANTES',
-                    message: `PERGUNTE: "${participantName}, qual é a sua opinião sobre isso?" ou "Alguém mais tem algo a adicionar?"`,
-                    context: `${uniqueSpeakers} participante(s) ativo(s) nas últimas mensagens`,
-                    timestamp: now
-                });
-            }
-
-            // 7. Risks that need attention - EXPLICIT SCRIPT
-            if (risks.length > 0) {
-                const highRisks = risks.filter(r => r.severity === 'high');
-                if (highRisks.length > 0) {
-                    const riskSummary = highRisks[0].summary;
-                    insights.push({
-                        id: `w-${now}-2`,
-                        type: 'warning',
-                        priority: 'high',
-                        title: 'ABORDAR RISCO URGENTE',
-                        message: `DIGA: "Identifiquei uma preocupação: ${riskSummary}. Podemos discutir como vamos mitigar isso?"`,
-                        context: `${highRisks.length} risco(s) de alta prioridade detectado(s)`,
-                        timestamp: now
-                    });
-                }
-            }
-
-            // 8. Topics mentioned in context but not discussed - EXPLICIT SCRIPT
-            if (threadContext && recentTranscript.length > 0) {
-                const topicMap: Record<string, string> = {
-                    'scope': 'escopo',
-                    'escopo': 'escopo',
-                    'requirement': 'requisitos',
-                    'requisito': 'requisitos',
-                    'deliverable': 'entregáveis',
-                    'entregável': 'entregáveis',
-                    'budget': 'orçamento',
-                    'orçamento': 'orçamento',
-                    'timeline': 'cronograma',
-                    'prazo': 'cronograma',
-                    'deadline': 'cronograma',
-                    'risk': 'riscos',
-                    'risco': 'riscos',
-                    'stakeholder': 'stakeholders',
-                    'stakeholders': 'stakeholders'
-                };
-
-                const contextLower = threadContext.toLowerCase();
-                const recentTextLower = recentText.toLowerCase();
-
-                const notDiscussedTopics: string[] = [];
-                Object.keys(topicMap).forEach(key => {
-                    if (contextLower.includes(key) && !recentTextLower.includes(key) && !recentTextLower.includes(topicMap[key])) {
-                        notDiscussedTopics.push(topicMap[key]);
-                    }
-                });
-
-                if (notDiscussedTopics.length > 0) {
-                    const topicToAsk = notDiscussedTopics[0];
-                    let questionScript = '';
-
-                    if (topicToAsk === 'escopo') {
-                        questionScript = 'PERGUNTE: "Podemos confirmar o escopo do projeto? Há algo que precisa ser esclarecido ou ajustado?"';
-                    } else if (topicToAsk === 'requisitos') {
-                        questionScript = 'PERGUNTE: "Os requisitos estão claros para todos? Há algum requisito que precisa ser revisado?"';
-                    } else if (topicToAsk === 'entregáveis') {
-                        questionScript = 'PERGUNTE: "Podemos revisar os entregáveis? Todos estão alinhados sobre o que será entregue?"';
-                    } else if (topicToAsk === 'orçamento') {
-                        questionScript = 'PERGUNTE: "Podemos confirmar o status do orçamento? Há alguma preocupação que precisamos abordar?"';
-                    } else if (topicToAsk === 'cronograma') {
-                        questionScript = 'PERGUNTE: "O cronograma ainda está viável? Precisamos ajustar algum prazo?"';
-                    } else if (topicToAsk === 'riscos') {
-                        questionScript = 'PERGUNTE: "Quais são os principais riscos que precisamos considerar? Como vamos mitigá-los?"';
-                    } else {
-                        questionScript = `PERGUNTE: "Podemos abordar o tópico de ${topicToAsk}? Há algo importante que precisamos discutir?"`;
-                    }
-
-                    insights.push({
-                        id: `q-${now}-3`,
-                        type: 'question',
-                        priority: 'medium',
-                        title: `ABORDAR: ${topicToAsk.toUpperCase()}`,
-                        message: questionScript,
-                        context: 'Mencionado na preparação do thread mas ainda não discutido',
-                        timestamp: now
-                    });
-                }
-            }
-
-            // Sort by priority and timestamp (most recent first)
-            insights.sort((a, b) => {
-                const priorityOrder = { high: 3, medium: 2, low: 1 };
-                if (priorityOrder[a.priority] !== priorityOrder[b.priority]) {
-                    return priorityOrder[b.priority] - priorityOrder[a.priority];
-                }
-                return b.timestamp - a.timestamp;
-            });
-
-            // Filter out dismissed insights and keep top 8
-            const activeInsights = insights.filter(i => !dismissedInsights.has(i.id)).slice(0, 8);
-            setGuidanceInsights(activeInsights);
         };
-
-        // Generate guidance every 20 seconds (reduced from 5s for performance)
-        generateGuidance();
-        const interval = setInterval(generateGuidance, 20000);
-
-        return () => clearInterval(interval);
-    }, [transcriptBlocks, detectedActions, risks, clarifications, participants, selectedThreadId, messages, dismissedInsights]);
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [insights, dismissInsight]);
 
     return (
-        <Card className="bg-gradient-to-br from-primary/5 via-background to-background border-2 border-primary/20 shadow-xl overflow-hidden">
-            <CardHeader className="p-3 border-b border-primary/20 bg-primary/5 shrink-0">
-                <CardTitle className="text-sm font-bold flex items-center gap-2">
-                    <Sparkles className="h-4 w-4 text-primary animate-pulse" aria-hidden="true" />
-                    Orientação em Tempo Real
-                    {guidanceInsights.length > 0 && (
-                        <Badge variant="secondary" className="ml-auto text-xs" aria-label={`${guidanceInsights.length} insights ativos`}>
-                            {guidanceInsights.length}
+        <Card className="h-full bg-gradient-to-br from-background via-background to-muted/20 border-border/50 shadow-xl overflow-hidden flex flex-col">
+            <CardHeader className="p-4 py-3 border-b bg-muted/5 backdrop-blur shrink-0">
+                <div className="flex items-center justify-between">
+                    <CardTitle className="text-sm font-bold flex items-center gap-2">
+                        <div className="p-1.5 rounded-lg bg-[oklch(0.6_0.15_240)]/10 text-[oklch(0.6_0.15_240)] ring-1 ring-[oklch(0.6_0.15_240)]/20">
+                            <Sparkles className="h-3.5 w-3.5 animate-pulse" />
+                        </div>
+                        <span className="bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/70">
+                            AI Co-Pilot
+                        </span>
+                    </CardTitle>
+                    {insights.length > 0 && (
+                        <Badge variant="secondary" className="text-[10px] font-mono gap-1 px-2 h-5 text-green-600 bg-green-500/10 border-green-500/20">
+                            <Activity className="h-3 w-3 animate-pulse" />
+                            LIVE
                         </Badge>
                     )}
-                </CardTitle>
+                </div>
             </CardHeader>
-            <CardContent
-                className="p-3 overflow-y-auto"
-                style={{
-                    maxHeight: '320px',
-                    scrollbarWidth: 'thin',
-                    scrollbarColor: 'var(--muted) var(--background)'
-                }}
-                aria-label="Orientação em tempo real - insights e scripts"
-            >
-                <AnimatePresence mode="popLayout">
-                    {guidanceInsights.length === 0 ? (
-                        <div className="text-center py-8" role="status" aria-live="polite">
-                            <Brain className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" aria-hidden="true" />
-                            <p className="text-sm text-muted-foreground">
-                                Analisando o contexto da reunião...
-                            </p>
-                            <p className="text-xs text-muted-foreground mt-2">
-                                Os insights aparecerão aqui em tempo real
-                            </p>
+
+            <Tabs defaultValue="active" className="flex-1 flex flex-col overflow-hidden">
+                <div className="px-4 pt-2 pb-1 bg-muted/5 border-b sticky top-0 z-10">
+                    <TabsList className="grid w-full grid-cols-2 h-8">
+                        <TabsTrigger value="active" className="text-xs">
+                            Sugestões Ativas
+                            {insights.length > 0 &&
+                                <span className="ml-1.5 text-[10px] bg-primary/10 text-primary px-1 rounded-full">{insights.length}</span>
+                            }
+                        </TabsTrigger>
+                        <TabsTrigger value="history" className="text-xs">
+                            Histórico
+                            <span className="ml-1.5 text-[10px] text-muted-foreground">{dismissedCount}</span>
+                        </TabsTrigger>
+                    </TabsList>
+                </div>
+
+                <TabsContent value="active" className="flex-1 p-0 m-0 overflow-hidden relative">
+                    <ScrollArea className="h-full" role="region" aria-label="Sugestões ativas">
+                        <div className="p-4 space-y-4" role="live" aria-live="polite">
+                            <AnimatePresence mode="popLayout" initial={false}>
+                                {insights.length === 0 ? (
+                                    <motion.div
+                                        initial={{ opacity: 0, scale: 0.95 }}
+                                        animate={{ opacity: 1, scale: 1 }}
+                                        className="flex flex-col items-center justify-center py-12 text-center"
+                                    >
+                                        <div className="h-16 w-16 rounded-full bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center mb-4 ring-1 ring-primary/20">
+                                            <Brain className="h-8 w-8 text-primary/40" />
+                                        </div>
+                                        <p className="text-sm font-medium text-foreground/80">
+                                            Monitorizando conversa...
+                                        </p>
+                                        <p className="text-xs text-muted-foreground mt-1 max-w-[200px]">
+                                            O Co-Pilot está a analisar padrões de fala e contexto estratégico.
+                                        </p>
+                                    </motion.div>
+                                ) : (
+                                    insights.map((insight, index) => (
+                                        <GuidanceCard
+                                            key={insight.id}
+                                            insight={insight}
+                                            index={index}
+                                            onDismiss={dismissInsight}
+                                        />
+                                    ))
+                                )}
+                            </AnimatePresence>
                         </div>
-                    ) : (
-                        <div className="space-y-2" role="list" aria-label="Lista de orientações">
-                            {guidanceInsights.map((insight, index) => (
-                                <GuidanceCard
-                                    key={insight.id}
-                                    insight={insight}
-                                    index={index}
-                                    onDismiss={handleDismiss}
-                                />
-                            ))}
+                    </ScrollArea>
+                    <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-background to-transparent pointer-events-none" />
+                </TabsContent>
+
+                <TabsContent value="history" className="flex-1 p-0 m-0 overflow-hidden relative">
+                    <ScrollArea className="h-full">
+                        <div className="p-4 space-y-4">
+                            {history.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground/50">
+                                    <HistoryIcon className="h-10 w-10 mb-2 opacity-20" />
+                                    <p className="text-xs">Nenhum insight no histórico</p>
+                                </div>
+                            ) : (
+                                history.map((insight, index) => (
+                                    <GuidanceCard
+                                        key={`hist-${insight.id}`}
+                                        insight={insight}
+                                        index={index}
+                                        showDismiss={false}
+                                    />
+                                ))
+                            )}
                         </div>
-                    )}
-                </AnimatePresence>
-            </CardContent>
+                    </ScrollArea>
+                </TabsContent>
+            </Tabs>
         </Card>
     );
 }
-

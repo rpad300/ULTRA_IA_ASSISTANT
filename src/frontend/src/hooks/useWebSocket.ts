@@ -41,9 +41,16 @@ export function useWebSocket(url: string | null, options: UseWebSocketOptions = 
 
         try {
             // URL should already be in ws:// format, but convert if needed
-            const wsUrl = url.startsWith('ws://') || url.startsWith('wss://')
+            let wsUrl = url.startsWith('ws://') || url.startsWith('wss://')
                 ? url
                 : url.replace(/^https?/, url.startsWith('https') ? 'wss' : 'ws');
+
+            // SOTA: Inject Auth Token for Security
+            const token = localStorage.getItem('auth_token');
+            if (token) {
+                const separator = wsUrl.includes('?') ? '&' : '?';
+                wsUrl = `${wsUrl}${separator}token=${token}`;
+            }
             const ws = new WebSocket(wsUrl);
 
             ws.onopen = () => {

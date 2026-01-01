@@ -1,0 +1,28 @@
+\U0001f6e0\ufe0f [SOTA Path] Patching torchaudio.AudioMetaData for compatibility...
+{"timestamp": "2025-12-23 22:03:43", "level": "INFO", "message": "Sentry not configured (SENTRY_DSN not set or not in production)", "request_id": "no-request-id", "module": "sentry_config", "func": "<module>", "logger": "utils.sentry_config"}
+{"timestamp": "2025-12-23 22:03:52", "level": "INFO", "message": "Registered routes:", "request_id": "no-request-id", "module": "main", "func": "<module>", "logger": "backend"}
+{"timestamp": "2025-12-23 22:03:52", "level": "INFO", "message": "  ['GET'] /api/threads/{thread_id}/sessions", "request_id": "no-request-id", "module": "main", "func": "<module>", "logger": "backend"}
+{"timestamp": "2025-12-23 22:03:52", "level": "INFO", "message": "  ['POST'] /api/threads/{thread_id}/sessions", "request_id": "no-request-id", "module": "main", "func": "<module>", "logger": "backend"}
+{"timestamp": "2025-12-23 22:03:52", "level": "INFO", "message": "  ['POST'] /api/threads/{thread_id}/finalize", "request_id": "no-request-id", "module": "main", "func": "<module>", "logger": "backend"}
+{"timestamp": "2025-12-23 22:03:52", "level": "INFO", "message": "  ['GET'] /api/projects/{project_id}/threads", "request_id": "no-request-id", "module": "main", "func": "<module>", "logger": "backend"}
+{"timestamp": "2025-12-23 22:03:52", "level": "INFO", "message": "  ['GET'] /api/threads/{thread_id}", "request_id": "no-request-id", "module": "main", "func": "<module>", "logger": "backend"}
+{"timestamp": "2025-12-23 22:03:52", "level": "INFO", "message": "  ['DELETE'] /api/threads/{thread_id}", "request_id": "no-request-id", "module": "main", "func": "<module>", "logger": "backend"}
+{"timestamp": "2025-12-23 22:03:52", "level": "INFO", "message": "  ['POST'] /api/projects/{project_id}/threads", "request_id": "no-request-id", "module": "main", "func": "<module>", "logger": "backend"}
+{"timestamp": "2025-12-23 22:03:52", "level": "INFO", "message": "  ['GET'] /api/threads/{thread_id}/messages", "request_id": "no-request-id", "module": "main", "func": "<module>", "logger": "backend"}
+{"timestamp": "2025-12-23 22:03:52", "level": "INFO", "message": "  ['POST'] /api/threads/{thread_id}/messages", "request_id": "no-request-id", "module": "main", "func": "<module>", "logger": "backend"}
+{"timestamp": "2025-12-23 22:03:52", "level": "INFO", "message": "  [] /api/ws/threads/{thread_id}/messages", "request_id": "no-request-id", "module": "main", "func": "<module>", "logger": "backend"}
+INFO:     Started server process [33188]
+INFO:     Waiting for application startup.
+{"timestamp": "2025-12-23 22:03:52", "level": "INFO", "message": "Starting Ultra Assistant Backend...", "request_id": "no-request-id", "module": "main", "func": "lifespan", "logger": "backend"}
+{"timestamp": "2025-12-23 22:03:52", "level": "INFO", "message": "Environment: development", "request_id": "no-request-id", "module": "main", "func": "lifespan", "logger": "backend"}
+{"timestamp": "2025-12-23 22:03:53", "level": "INFO", "message": "Connected to Redis Cache (Binary/SOTA).", "request_id": "no-request-id", "module": "redis_service", "func": "connect", "logger": "services.redis_service"}
+{"timestamp": "2025-12-23 22:03:53", "level": "INFO", "message": "ChatManager: Distributed Mode (Redis) - Instance 241f7353-271b-4ea2-a829-0fe7337be560", "request_id": "no-request-id", "module": "chat_manager", "func": "initialize", "logger": "managers.chat_manager"}
+{"timestamp": "2025-12-23 22:03:53", "level": "INFO", "message": "Initializing Audio Service Client (SOTA) at http://127.0.0.1:8001/api/audio-service [Monitor=False]", "request_id": "no-request-id", "module": "audio_service_client", "func": "start", "logger": "services.audio_service_client"}
+{"timestamp": "2025-12-23 22:03:54", "level": "INFO", "message": "Redis Subscriber Active (Instance 241f7353-271b-4ea2-a829-0fe7337be560)", "request_id": "no-request-id", "module": "chat_manager", "func": "_redis_subscriber", "logger": "managers.chat_manager"}
+{"timestamp": "2025-12-23 22:03:54", "level": "INFO", "message": "[OK] Qdrant Collection 'ultra_knowledge_base' ready.", "request_id": "no-request-id", "module": "qdrant_service", "func": "ensure_collection", "logger": "services.qdrant_service"}
+INFO:     Application startup complete.
+ERROR:    [Errno 10048] error while attempting to bind on address ('0.0.0.0', 8000): [winerror 10048] normalmente s¾ Ú permitido uma utilizaþÒo de cada endereþo de socket (protocolo/endereþo de rede/porta)
+INFO:     Waiting for application shutdown.
+{"timestamp": "2025-12-23 22:03:54", "level": "INFO", "message": "Shutting down Ultra Assistant Backend...", "request_id": "no-request-id", "module": "main", "func": "lifespan", "logger": "backend"}
+{"timestamp": "2025-12-23 22:03:54", "level": "INFO", "message": "Audio Service Client Shutdown.", "request_id": "no-request-id", "module": "audio_service_client", "func": "stop", "logger": "services.audio_service_client"}
+INFO:     Application shutdown complete.

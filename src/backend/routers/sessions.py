@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File
+from starlette.background import BackgroundTasks
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
@@ -67,22 +68,114 @@ def get_thread_sessions(thread_id: str):
     return response.data if response.data else []
 
 @router.post("/threads/{thread_id}/sessions", response_model=Session)
-def create_session(thread_id: str):
-    """Create a new session for a thread."""
+async def create_session(
+    thread_id: str,
+    background_tasks: BackgroundTasks
+):
+    """
+    Create a new session for a thread.
+    SOTA: Pre-provisions the Drive Folder immediately to allow real-time streaming/uploads.
+    """
     supabase = get_supabase_client()
+    drive = get_drive_service()
     
+    # 1. Get Context (Thread -> Project -> Company) for Drive Path
+    thread_res = supabase.table("threads").select("title, project_id, company_id, drive_folder_id").eq("id", thread_id).execute()
+    
+    parent_folder_id = None
+    thread_title = "Session"
+    
+    if thread_res.data:
+        t_data = thread_res.data[0]
+        thread_title = t_data.get("title", "Session")
+        
+        # Resolve Parent (Project Priority)
+        project_folder_id = t_data.get("drive_folder_id")
+        
+        if not project_folder_id:
+            # Fallback Project
+            if t_data.get("project_id"):
+                 p_res = supabase.table("projects").select("drive_folder_id").eq("id", t_data.get("project_id")).execute()
+                 if p_res.data:
+                     project_folder_id = p_res.data[0].get("drive_folder_id")
+            
+            # Fallback Company
+            if not project_folder_id and t_data.get("company_id"):
+                 c_res = supabase.table("companies").select("drive_root_folder_id").eq("id", t_data.get("company_id")).execute()
+                 if c_res.data:
+                     project_folder_id = c_res.data[0].get("drive_root_folder_id")
+        
+        parent_folder_id = project_folder_id
+
+    # 2. Pre-provision Drive Folder (Async)
+    # We do this *before* returning if fast, or better: 
+    # We generate the UUID first, then spawn background task?
+    # No, we want the ID in the DB.
+    
+    # Let's try to do it inline if we can, or valid SOTA pattern:
+    # "Fire and Forget" for folder creation, but we need the ID?
+    # Actually, we can just create it. ensure_folder is relatively fast. 
+    # But to be truly SOTA Async, maybe we use a Background Task to "Ensure" it 
+    # and update the DB record asynchronously?
+    # User requested "Immediate", implying he wants it ready.
+    # Let's do it inline for now (2-300ms) to ensure consistency, 
+    # or use the "ensure_folder_sota" which is robust.
+    
+    session_drive_id = None
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
+    
+    if parent_folder_id and drive.service:
+        try:
+            # Ensure "Sessions" container
+            # We use to_thread to avoid blocking event loop
+            sessions_container_id = await asyncio.to_thread(drive.ensure_folder, "Sessions", parent_id=parent_folder_id)
+            
+            if sessions_container_id:
+                # SOTA 2025: "YYYY-MM-DD_HHmm_[Title]"
+                timestamp_sota = datetime.now().strftime("%Y-%m-%d_%H%M")
+                safe_title = "".join([c for c in thread_title if c.isalnum() or c in (' ', '-', '_')]).strip()
+                session_folder_name = f"{timestamp_sota}_{safe_title}"
+                
+                # Create Folder (No Metadata yet as ID comes later)
+                session_drive_id = await asyncio.to_thread(
+                    drive.create_folder, # Create explicitly as timestamp makes it unique
+                    session_folder_name, 
+                    parent_id=sessions_container_id
+                )
+                
+                # SOTA 2025 Subfolders
+                if session_drive_id:
+                     await asyncio.to_thread(drive.ensure_folder, "🎙️ Audio_Original", parent_id=session_drive_id)
+                     await asyncio.to_thread(drive.ensure_folder, "📝 Transcripts", parent_id=session_drive_id)
+                     await asyncio.to_thread(drive.ensure_folder, "📊 Reports", parent_id=session_drive_id)
+
+        except Exception as e:
+            logger.error(f"Failed to pre-provision session folder: {e}")
+
     session_data = {
         "thread_id": thread_id,
         "type": "main_meeting", # Default type
         "started_at": datetime.now().isoformat(),
-        "stt_provider": "assemblyai"
+        "stt_provider": "assemblyai",
+        "drive_folder_id": session_drive_id
     }
     
     response = supabase.table("sessions").insert(session_data).execute()
     if not response.data:
         raise HTTPException(status_code=500, detail="Failed to create session")
+    
+    session = response.data[0]
+    
+    # Post-update metadata if we missed it (optional SOTA polish)
+    if session_drive_id:
+        # Update folder metadata with real session ID now that we have it
+        background_tasks.add_task(
+            drive.update_file_metadata, 
+            session_drive_id, 
+            {"appProperties": {"db_id": session["id"], "type": "session"}}
+        )
         
-    return response.data[0]
+    return session
 
 @router.get("/sessions/{session_id}/transcripts")
 def get_session_transcripts(session_id: str):
@@ -116,51 +209,67 @@ async def finalize_session(thread_id: str, request: FinalizeSessionRequest):
     project_id = thread.get("project_id")
     company_id = thread.get("company_id")
     
-    # Resolve Drive Folder
+    # Resolve Drive Folder (SOTA Structure: Project -> Sessions -> SessionFolder)
     # Priority: Thread Folder > Project Folder > Company Folder > Root
-    parent_folder_id = thread.get("drive_folder_id")
+    project_folder_id = thread.get("drive_folder_id")
     
-    if not parent_folder_id:
+    if not project_folder_id:
         # Fallback to Project
         proj_res = supabase.table("projects").select("drive_folder_id").eq("id", project_id).execute()
         if proj_res.data and proj_res.data[0].get("drive_folder_id"):
-            parent_folder_id = proj_res.data[0].get("drive_folder_id")
+            project_folder_id = proj_res.data[0].get("drive_folder_id")
         else:
             # Fallback to Company
             comp_res = supabase.table("companies").select("drive_root_folder_id").eq("id", company_id).execute()
             if comp_res.data and comp_res.data[0].get("drive_root_folder_id"):
-                parent_folder_id = comp_res.data[0].get("drive_root_folder_id")
+                project_folder_id = comp_res.data[0].get("drive_root_folder_id")
 
-    # 2. Generate Summary
-    summary_text = "No transcript provided."
-    if request.transcript:
+    # 3. Create Session Folder Layout
+    final_upload_folder_id = project_folder_id # Default to parent if structure fails
+    
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
+    
+    if project_folder_id:
         try:
-            summary_text = await gemini.summarize_text(request.transcript)
+            # Ensure "Sessions" container
+            sessions_container_id = await asyncio.to_thread(drive.ensure_folder, "Sessions", parent_id=project_folder_id)
+            
+            if sessions_container_id:
+                # Ensure specific Session folder: YYYY-MM-DD_HHmm_Title
+                safe_title = "".join([c for c in thread.get("title", "Session") if c.isalnum() or c in (' ', '-', '_')]).strip()
+                session_folder_name = f"{timestamp}_{safe_title}"
+                
+                # Create session folder (Idempotent by name) with metadata
+                final_upload_folder_id = await asyncio.to_thread(
+                    drive.ensure_folder_sota, 
+                    session_folder_name, 
+                    parent_id=sessions_container_id,
+                    entity_id=request.session_id, # Might be None if new
+                    entity_type="session"
+                )
         except Exception as e:
-            print(f"Gemini Summary Error: {e}")
-            summary_text = "Error generating summary."
+            logger.error(f"Failed to create session folder structure: {e}")
 
-    # 3. Upload to Drive
+    # 4. Upload to Drive (to the specific session folder)
     transcript_file_id = None
     summary_file_id = None
     
-    # Create a timestamped name
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
-    
     try:
         if request.transcript:
-            transcript_file_id = drive.upload_content(
+            transcript_file_id = await asyncio.to_thread(
+                drive.upload_content,
                 request.transcript, 
                 f"Transcript_{timestamp}.txt", 
                 "text/plain", 
-                parent_folder_id
+                final_upload_folder_id
             )
             
-        summary_file_id = drive.upload_content(
+        summary_file_id = await asyncio.to_thread(
+            drive.upload_content,
             summary_text, 
             f"Summary_{timestamp}.md", 
             "text/markdown", 
-            parent_folder_id
+            final_upload_folder_id
         )
     except Exception as e:
         print(f"Drive Upload Error: {e}")
@@ -231,6 +340,40 @@ async def finalize_session(thread_id: str, request: FinalizeSessionRequest):
             "summary": summary_file_id
         }
     }
+
+@router.delete("/sessions/{session_id}")
+async def delete_session(session_id: str):
+    """Delete a session and all its associated resources."""
+    logger.info(f"Deleting session {session_id}")
+    supabase = get_supabase_client()
+    drive = get_drive_service()
+    embedding = get_embedding_service()
+    
+    # 1. Get Session Data to find resources
+    res = supabase.table("sessions").select("*").eq("id", session_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Session not found")
+        
+    session = res.data[0]
+    
+    # 2. Cleanup Drive Files
+    if session.get("transcript_file_id"):
+        drive.delete_file(session["transcript_file_id"])
+        
+    if session.get("summary_file_id"):
+        drive.delete_file(session["summary_file_id"])
+        
+    # 3. Cleanup Embeddings
+    try:
+        await embedding.delete_session_vectors(session_id)
+    except Exception as e:
+        logger.warning(f"Failed to delete session vectors: {e}")
+    
+    # 4. Delete Session Record
+    # Assuming CASCADE delete is set up in DB for related tables
+    supabase.table("sessions").delete().eq("id", session_id).execute()
+    
+    return {"status": "success", "message": f"Session {session_id} deleted"}
 
 @router.post("/sessions/{session_id}/transcribe")
 async def transcribe_session_audio(
@@ -348,37 +491,65 @@ async def transcribe_session_audio(
         summary_file_id = None
         
         if thread_id:
-            # Get thread for drive folder
-            thread_res = supabase.table("threads").select("drive_folder_id, project_id").eq("id", thread_id).execute()
-            parent_folder_id = None
+            # Get thread context for Drive
+            thread_res = supabase.table("threads").select("drive_folder_id, project_id, title").eq("id", thread_id).execute()
+            
+            project_folder_id = None
+            thread_title = "Session"
             
             if thread_res.data:
-                thread = thread_res.data[0]
-                parent_folder_id = thread.get("drive_folder_id")
-                project_id = thread.get("project_id")
+                thread_data = thread_res.data[0]
+                thread_title = thread_data.get("title", "Session")
+                project_folder_id = thread_data.get("drive_folder_id")
+                project_id = thread_data.get("project_id")
                 
-                if not parent_folder_id and project_id:
+                if not project_folder_id and project_id:
                     # Fallback to project folder
                     project_res = supabase.table("projects").select("drive_folder_id, company_id").eq("id", project_id).execute()
                     if project_res.data:
-                        project = project_res.data[0]
-                        parent_folder_id = project.get("drive_folder_id")
-                        company_id = project.get("company_id")
+                        project_data = project_res.data[0]
+                        project_folder_id = project_data.get("drive_folder_id")
+                        company_id = project_data.get("company_id")
                         
-                        if not parent_folder_id and company_id:
-                            # Fallback to company root folder
+                        if not project_folder_id and company_id:
+                            # Fallback to Company Root
                             company_res = supabase.table("companies").select("drive_root_folder_id").eq("id", company_id).execute()
                             if company_res.data:
-                                parent_folder_id = company_res.data[0].get("drive_root_folder_id")
+                                project_folder_id = company_res.data[0].get("drive_root_folder_id")
             
-            if parent_folder_id:
+            # Create Session Folder Layout
+            final_upload_folder_id = project_folder_id
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
+
+            if project_folder_id:
+                try:
+                    # Ensure "Sessions" container
+                    sessions_container_id = await asyncio.to_thread(drive.ensure_folder, "Sessions", parent_id=project_folder_id)
+                    
+                    if sessions_container_id:
+                        # Ensure specific Session folder: YYYY-MM-DD_HHmm_Title
+                        safe_title = "".join([c for c in thread_title if c.isalnum() or c in (' ', '-', '_')]).strip()
+                        session_folder_name = f"{timestamp}_{safe_title}"
+                        
+                        # Create session folder (Idempotent by name) with metadata
+                        final_upload_folder_id = await asyncio.to_thread(
+                            drive.ensure_folder_sota, 
+                            session_folder_name, 
+                            parent_id=sessions_container_id,
+                            entity_id=session_id,
+                            entity_type="session"
+                        )
+                except Exception as e:
+                    logger.error(f"Failed to create session folder structure: {e}")
+
+            if final_upload_folder_id:
                 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
                 try:
-                    transcript_file_id = drive.upload_content(
+                    transcript_file_id = await asyncio.to_thread(drive.upload_content,
                         formatted_transcript,
                         f"Transcript_{timestamp}.txt",
                         "text/plain",
-                        parent_folder_id
+                        final_upload_folder_id
                     )
                     
                     summary_content = f"""# Meeting Summary
@@ -391,11 +562,11 @@ async def transcribe_session_audio(
 ## Sentiment Overview
 {intelligence_result.get('sentiment_summary', 'No sentiment analysis available')}
 """
-                    summary_file_id = drive.upload_content(
+                    summary_file_id = await asyncio.to_thread(drive.upload_content,
                         summary_content,
                         f"Summary_{timestamp}.md",
                         "text/markdown",
-                        parent_folder_id
+                        final_upload_folder_id
                     )
                     
                     # Update session with Drive file IDs

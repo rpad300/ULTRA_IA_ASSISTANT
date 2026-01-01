@@ -22,7 +22,7 @@ namespace AudioStreamingService
         private volatile bool isConnected = false; // Thread-safe flag
         private readonly CancellationTokenSource cts = new CancellationTokenSource();
         private readonly System.Collections.Concurrent.ConcurrentQueue<string> sendQueue = new System.Collections.Concurrent.ConcurrentQueue<string>();
-        private readonly AutoResetEvent signal = new AutoResetEvent(false);
+        private readonly SemaphoreSlim signal = new SemaphoreSlim(0);
         
         public event EventHandler<string>? ConnectionStatusChanged;
         public event EventHandler<string>? ErrorOccurred;
@@ -60,7 +60,7 @@ namespace AudioStreamingService
                         var ping = new { type = "ping", timestamp = DateTime.UtcNow };
                         string json = JsonSerializer.Serialize(ping);
                         sendQueue.Enqueue(json);
-                        signal.Set();
+                        signal.Release();
                     }
                 }
                 catch
@@ -136,7 +136,7 @@ namespace AudioStreamingService
             {
                 _logInfo($"[Backend] Resending Session ID on Connect: {CurrentSessionId}");
                 var payload = System.Text.Json.JsonSerializer.Serialize(new { type = "session_update", session_id = CurrentSessionId });
-                ws.Send(payload);
+                ws?.Send(payload);
             }
         }
 
@@ -168,14 +168,22 @@ namespace AudioStreamingService
             {
                 try
                 {
-                    signal.WaitOne(500); // Wait for signal or timeout (faster for audio)
+                    try 
+                    {
+                        await signal.WaitAsync(500, cts.Token);
+                    }
+                    catch (OperationCanceledException) { break; }
 
                     if (isConnected && ws != null && ws.State == WebSocketState.Open)
                     {
                         // 1. Send Control Messages
                         while (sendQueue.TryDequeue(out string? json))
                         {
-                            if (json != null) ws.Send(json);
+                            if (json != null) 
+                            {
+                                ws?.Send(json);
+                                if (json.Contains("session_update")) _logInfo($"[Backend] Sent: {json}");
+                            }
                         }
 
                         // 2. Send Audio Data
@@ -183,7 +191,7 @@ namespace AudioStreamingService
                         int processed = 0;
                         while (audioQueue.TryDequeue(out byte[]? data) && processed < 50)
                         {
-                            if (data != null) ws.Send(data, 0, data.Length);
+                            if (data != null) ws?.Send(data, 0, data.Length);
                             processed++;
                         }
                     }
@@ -207,7 +215,7 @@ namespace AudioStreamingService
             if (audioQueue.Count > 500) return; 
             
             audioQueue.Enqueue(data);
-            signal.Set();
+            signal.Release();
         }
         
         public void SendTranscript(object transcript)
@@ -217,7 +225,7 @@ namespace AudioStreamingService
             {
                 string json = JsonSerializer.Serialize(transcript);
                 sendQueue.Enqueue(json);
-                signal.Set(); // Wake up sender
+                signal.Release(); // Wake up sender
             }
             catch (Exception ex)
             {
@@ -231,7 +239,7 @@ namespace AudioStreamingService
             {
                 string json = JsonSerializer.Serialize(status);
                 sendQueue.Enqueue(json);
-                signal.Set();
+                signal.Release();
             }
             catch (Exception ex)
             {
@@ -243,7 +251,7 @@ namespace AudioStreamingService
         {
             if (string.IsNullOrEmpty(json)) return;
             sendQueue.Enqueue(json);
-            signal.Set();
+            signal.Release();
         }
 
         public void Disconnect()

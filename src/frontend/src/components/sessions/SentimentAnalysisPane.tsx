@@ -1,148 +1,223 @@
 import { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, TrendingDown, Minus, Smile, Frown, Meh } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus, Activity, Wind, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useMeetingStore } from "@/store/meetingStore";
 import { motion } from "framer-motion";
-import { Progress } from "@/components/ui/progress";
+import { useEmotionalClimate } from "@/hooks/useEmotionalClimate";
+import { Area, AreaChart, ResponsiveContainer } from "recharts";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+
+// Animated Number Component
+function AnimatedMetric({ label, value, color }: { label: string, value: number, color: string }) {
+    return (
+        <div className="flex flex-col items-center bg-card/40 rounded-lg p-2 border border-white/5">
+            <span className={cn("text-xl font-bold font-mono tracking-tight tabular-nums", color)}>
+                {/* Simple animation via key */}
+                <motion.span
+                    key={value}
+                    initial={{ opacity: 0, y: 5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                >
+                    {value}
+                </motion.span>
+                %
+            </span>
+            <span className="text-[10px] text-muted-foreground uppercase opacity-70">{label}</span>
+        </div>
+    );
+}
 
 export function SentimentAnalysisPane() {
-    const { transcriptBlocks, analyzeSentiment } = useMeetingStore();
+    // SOTA Hook
+    const { positive, neutral, negative, overall, vibe, trend, criticalMoment } = useEmotionalClimate();
+    const { setFocusedBlockId } = useMeetingStore();
 
-    // Analyze sentiment for all blocks
-    const sentimentData = useMemo(() => {
-        const analyzed = transcriptBlocks.map(block => {
-            if (!block.sentiment) {
-                const sentiment = analyzeSentiment(block.text);
-                // Update block with sentiment (would need to update store)
-                return { ...block, sentiment };
-            }
-            return block;
-        });
+    // Vibrant OKLCH-derived colors for Chart
+    const chartData = useMemo(() => {
+        // Transform trend data relative to chart needs
+        // We want a stacked area or a "pulse".
+        // Let's do a "Sentiment Flow": +1 for Pos, 0 for Neu, -1 for Neg, but cumulative?
+        // User asked for "Stacked Area" OR "Pulse".
+        // Stacked Area usually means % of sentiment over time window.
+        // Let's create a sliding window relative distribution 
+        // OR better: A smoothed "Sentiment Velocity" curve.
 
-        const positive = analyzed.filter(b => b.sentiment === 'positive').length;
-        const neutral = analyzed.filter(b => b.sentiment === 'neutral').length;
-        const negative = analyzed.filter(b => b.sentiment === 'negative').length;
-        const total = analyzed.length;
+        // Actually, user explicitly asked for "Stacked Area or Pulse".
+        // Stacked Area is great for showing composition over time.
 
-        return {
-            positive: total > 0 ? Math.round((positive / total) * 100) : 0,
-            neutral: total > 0 ? Math.round((neutral / total) * 100) : 0,
-            negative: total > 0 ? Math.round((negative / total) * 100) : 0,
-            overall: total > 0
-                ? positive > negative ? 'positive' : negative > positive ? 'negative' : 'neutral'
-                : 'neutral',
-        };
-    }, [transcriptBlocks, analyzeSentiment]);
+        return trend.map((t, i) => ({
+            index: i,
+            id: t.id,
+            sentiment: t.sentiment,
+            // Stack values: 1 for correct sentiment, 0 for others
+            pos: t.sentiment === 'positive' ? 1 : 0,
+            neu: t.sentiment === 'neutral' ? 1 : 0,
+            neg: t.sentiment === 'negative' ? 1 : 0,
+            speaker: t.speaker,
+            text: t.text
+        }));
+    }, [trend]);
 
-
-
-    const getOverallColor = (sentiment: string) => {
-        switch (sentiment) {
-            case 'positive': return "bg-green-500/10 text-green-500 border-green-500/20";
-            case 'negative': return "bg-red-500/10 text-red-500 border-red-500/20";
-            default: return "bg-yellow-500/10 text-yellow-500 border-yellow-500/20";
+    // Dynamic Glow Aura based on Overall Sentiment
+    const glowColor = useMemo(() => {
+        switch (overall) {
+            case 'positive': return "shadow-[0_0_50px_-12px_rgba(16,185,129,0.5)] border-emerald-500/30";
+            case 'negative': return "shadow-[0_0_50px_-12px_rgba(239,68,68,0.5)] border-rose-500/30";
+            default: return "shadow-[0_0_50px_-12px_rgba(234,179,8,0.5)] border-amber-500/30";
         }
+    }, [overall]);
+
+    const headerIcon = useMemo(() => {
+        switch (overall) {
+            case 'positive': return <TrendingUp className="h-4 w-4 text-emerald-400" />;
+            case 'negative': return <TrendingDown className="h-4 w-4 text-rose-400" />;
+            default: return <Minus className="h-4 w-4 text-amber-400" />;
+        }
+    }, [overall]);
+
+    const handleTrendClick = (blockId: string) => {
+        setFocusedBlockId(blockId);
     };
 
-    const getOverallIcon = (sentiment: string) => {
-        switch (sentiment) {
-            case 'positive': return <Smile className="h-4 w-4 text-green-500" />;
-            case 'negative': return <Frown className="h-4 w-4 text-red-500" />;
-            default: return <Meh className="h-4 w-4 text-yellow-500" />;
-        }
-    };
-
-    if (transcriptBlocks.length === 0) {
+    if (trend.length === 0) {
         return (
-            <Card className="border-border">
-                <CardHeader className="p-4 border-b border-border">
-                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                        <TrendingUp className="h-4 w-4 text-primary" />
-                        Sentiment Analysis
-                    </CardTitle>
-                </CardHeader>
-                <CardContent className="p-4">
-                    <p className="text-xs text-muted-foreground text-center py-4">
-                        Sentiment analysis will appear as the meeting progresses
-                    </p>
-                </CardContent>
+            <Card className="border-border/50 bg-black/20 backdrop-blur-xl h-full flex items-center justify-center">
+                <div className="flex flex-col items-center gap-3 text-muted-foreground animate-pulse">
+                    <Activity className="h-8 w-8 opacity-50" />
+                    <span className="text-xs font-medium">Waiting for signals...</span>
+                </div>
             </Card>
         );
     }
 
     return (
-        <Card className="border-border">
-            <CardHeader className="p-4 border-b border-border">
+        <Card className={cn("border-border/40 bg-card/10 backdrop-blur-xl overflow-hidden transition-all duration-700", glowColor)}>
+            <CardHeader className="p-4 border-b border-border/10 pb-2">
                 <div className="flex items-center justify-between">
-                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                        <TrendingUp className="h-4 w-4 text-primary" />
-                        Sentiment Analysis
+                    <CardTitle className="text-sm font-semibold flex items-center gap-2 text-foreground/90">
+                        <Zap className="h-4 w-4 text-primary" />
+                        Emotional Climate
                     </CardTitle>
-                    <Badge variant="outline" className={cn("text-xs", getOverallColor(sentimentData.overall))}>
-                        {getOverallIcon(sentimentData.overall)}
-                        <span className="ml-1 capitalize">{sentimentData.overall}</span>
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                        {criticalMoment.type !== 'stable' && (
+                            <motion.div
+                                initial={{ opacity: 0, scale: 0.8 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                className={cn(
+                                    "text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider",
+                                    criticalMoment.type === 'upturn' ? "bg-emerald-500/20 text-emerald-400" : "bg-rose-500/20 text-rose-400"
+                                )}
+                            >
+                                {criticalMoment.type === 'upturn' ? "Upturn" : "Drop"}
+                            </motion.div>
+                        )}
+                        <Badge variant="outline" className="text-xs backdrop-blur-md bg-background/20 border-border/20">
+                            {headerIcon}
+                            <span className="ml-1.5 capitalize font-mono tracking-tighter">{vibe}</span>
+                        </Badge>
+                    </div>
                 </div>
             </CardHeader>
-            <CardContent className="p-4 space-y-4">
-                {/* Positive */}
-                <div className="space-y-2">
-                    <div className="flex items-center justify-between text-xs">
-                        <div className="flex items-center gap-2">
-                            <TrendingUp className="h-3 w-3 text-green-500" />
-                            <span className="text-muted-foreground">Positive</span>
-                        </div>
-                        <span className="font-medium">{sentimentData.positive}%</span>
-                    </div>
-                    <Progress value={sentimentData.positive} className="h-2 bg-green-500/20" />
+
+            <CardContent className="p-0 relative">
+                {/* 1. Main Metrics - Spring Physics Integers defined via simple Key mainly, or we could use MotionValue for integers but keeping it simple for now */}
+                <div className="grid grid-cols-3 gap-1 p-4 pb-2">
+                    <AnimatedMetric label="Positivity" value={positive} color="text-emerald-400" />
+                    <AnimatedMetric label="Neutrality" value={neutral} color="text-amber-400" />
+                    <AnimatedMetric label="Negativity" value={negative} color="text-rose-400" />
                 </div>
 
-                {/* Neutral */}
-                <div className="space-y-2">
-                    <div className="flex items-center justify-between text-xs">
-                        <div className="flex items-center gap-2">
-                            <Minus className="h-3 w-3 text-yellow-500" />
-                            <span className="text-muted-foreground">Neutral</span>
-                        </div>
-                        <span className="font-medium">{sentimentData.neutral}%</span>
-                    </div>
-                    <Progress value={sentimentData.neutral} className="h-2 bg-yellow-500/20" />
+                {/* 2. Stacked Area Chart "Sentiment Pulse" */}
+                <div className="h-32 w-full mt-2 relative group">
+                    {/* Blurry Glow Background behind chart */}
+                    <div className={cn("absolute inset-0 opacity-20 blur-2xl transition-colors duration-1000 pointer-events-none",
+                        overall === 'positive' ? 'bg-emerald-500/30' : overall === 'negative' ? 'bg-rose-500/30' : 'bg-amber-500/30'
+                    )} />
+
+                    <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={chartData} margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>
+                            <defs>
+                                <linearGradient id="gradPos" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.8} />
+                                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                                </linearGradient>
+                                <linearGradient id="gradNeu" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.8} />
+                                    <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
+                                </linearGradient>
+                                <linearGradient id="gradNeg" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.8} />
+                                    <stop offset="95%" stopColor="#f43f5e" stopOpacity={0} />
+                                </linearGradient>
+                            </defs>
+                            {/* We stack them to show volume composition */}
+                            <Area
+                                type="monotone"
+                                dataKey="neg"
+                                stackId="1"
+                                stroke="#f43f5e"
+                                fill="url(#gradNeg)"
+                                strokeWidth={2}
+                                isAnimationActive={true}
+                            />
+                            <Area
+                                type="monotone"
+                                dataKey="neu"
+                                stackId="1"
+                                stroke="#f59e0b"
+                                fill="url(#gradNeu)"
+                                strokeWidth={2}
+                                isAnimationActive={true}
+                            />
+                            <Area
+                                type="monotone"
+                                dataKey="pos"
+                                stackId="1"
+                                stroke="#10b981"
+                                fill="url(#gradPos)"
+                                strokeWidth={2}
+                                isAnimationActive={true}
+                            />
+                        </AreaChart>
+                    </ResponsiveContainer>
                 </div>
 
-                {/* Negative */}
-                <div className="space-y-2">
-                    <div className="flex items-center justify-between text-xs">
-                        <div className="flex items-center gap-2">
-                            <TrendingDown className="h-3 w-3 text-red-500" />
-                            <span className="text-muted-foreground">Negative</span>
-                        </div>
-                        <span className="font-medium">{sentimentData.negative}%</span>
+                {/* 3. Interactive Trend Bar (Deep Linking) */}
+                <div className="px-4 pb-4 mt-2">
+                    <div className="flex items-center justify-between mb-2">
+                        <span className="text-[10px] uppercase text-muted-foreground font-bold tracking-widest">Live Stream</span>
+                        <Wind className="h-3 w-3 text-muted-foreground/50" />
                     </div>
-                    <Progress value={sentimentData.negative} className="h-2 bg-red-500/20" />
+                    <div className="flex h-3 gap-0.5 w-full mask-linear-fade">
+                        <TooltipProvider delayDuration={0}>
+                            {trend.map((block) => (
+                                <Tooltip key={block.id}>
+                                    <TooltipTrigger asChild>
+                                        <motion.button
+                                            layoutId={`block-${block.id}`}
+                                            initial={{ scaleY: 0 }}
+                                            animate={{ scaleY: 1 }}
+                                            className={cn(
+                                                "flex-1 rounded-sm cursor-pointer transition-all hover:scale-y-150 hover:brightness-125 focus:ring-1 focus:ring-ring focus:outline-none relative",
+                                                block.sentiment === 'positive' ? "bg-emerald-500" : block.sentiment === 'negative' ? "bg-rose-500" : "bg-amber-500/80"
+                                            )}
+                                            onClick={() => handleTrendClick(block.id)}
+                                            whileHover={{ zIndex: 10 }}
+                                        />
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" className="bg-black/90 text-xs p-2 border-white/10 backdrop-blur-xl">
+                                        <p className="font-bold text-emerald-400 mb-0.5">{block.speaker}</p>
+                                        <p className="text-white/80 max-w-[200px] truncate">{block.text}</p>
+                                    </TooltipContent>
+                                </Tooltip>
+                            ))}
+                        </TooltipProvider>
+                    </div>
                 </div>
 
-                {/* Real-time sentiment trend */}
-                <div className="pt-4 border-t border-border">
-                    <p className="text-xs text-muted-foreground mb-2">Recent Trend</p>
-                    <div className="flex items-center gap-1 h-8">
-                        {transcriptBlocks.slice(-20).map((block, index) => {
-                            const sentiment = block.sentiment || analyzeSentiment(block.text);
-                            const color = sentiment === 'positive' ? 'bg-green-500' : sentiment === 'negative' ? 'bg-red-500' : 'bg-yellow-500';
-                            return (
-                                <motion.div
-                                    key={block.id}
-                                    initial={{ scale: 0 }}
-                                    animate={{ scale: 1 }}
-                                    transition={{ delay: index * 0.05 }}
-                                    className={cn("flex-1 h-full rounded-sm", color, "opacity-60 hover:opacity-100 transition-opacity")}
-                                    title={`${block.speaker}: ${sentiment}`}
-                                />
-                            );
-                        })}
-                    </div>
-                </div>
             </CardContent>
         </Card>
     );

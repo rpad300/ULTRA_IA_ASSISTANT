@@ -109,7 +109,7 @@ class DriveService:
              logger.error(f"Failed to authenticate with Drive: {e}", exc_info=True)
              raise e
 
-    def create_folder(self, name: str, parent_id: str = None) -> str:
+    def create_folder(self, name: str, parent_id: str = None, app_properties: dict = None) -> str:
         if not self.service: return None
         
         file_metadata = {
@@ -118,18 +118,66 @@ class DriveService:
         }
         if parent_id:
             file_metadata['parents'] = [parent_id]
+        
+        # SOTA: Attach Metadata on Creation
+        if app_properties:
+            file_metadata['appProperties'] = app_properties
             
         try:
             file = self.service.files().create(body=file_metadata, fields='id').execute()
+            safe_name = name.encode('ascii', 'replace').decode('ascii')
+            logger.info(f"Drive Folder Created: {safe_name} (ID: {file.get('id')}) [Props: {app_properties}]")
             return file.get('id')
         except Exception as e:
             logger.error(f"Error creating folder {name}: {e}")
             return None
 
-    def ensure_folder(self, name: str, parent_id: str = None) -> str:
-        """Finds a folder by name inside parent (or root) or creates it."""
+    def find_folder_by_property(self, key: str, value: str, parent_id: str = None) -> str:
+        """SOTA: Robust lookup via appProperties (Idempotency)."""
         if not self.service: return None
         
+        # Query: appProperties has key=value AND not trashed
+        query = f"appProperties has {{ key='{key}' and value='{value}' }} and trashed=false and mimeType='application/vnd.google-apps.folder'"
+        
+        if parent_id:
+            query += f" and '{parent_id}' in parents" # Strict hierarchy check
+            
+        try:
+            results = self.service.files().list(
+                q=query, 
+                spaces='drive', 
+                fields='files(id, name, appProperties)',
+                pageSize=1
+            ).execute()
+            
+            files = results.get('files', [])
+            if files:
+                logger.debug(f"Found folder by property {key}={value}: {files[0].get('id')}")
+                return files[0]['id']
+            return None
+        except Exception as e:
+            logger.error(f"Error finding folder by property {key}={value}: {e}")
+            return None
+
+    def ensure_folder(self, name: str, parent_id: str = None) -> str:
+        """Legacy wrapper for simple name-based ensure."""
+        return self.ensure_folder_sota(name, parent_id)
+
+    def ensure_folder_sota(self, name: str, parent_id: str = None, entity_id: str = None, entity_type: str = None) -> str:
+        """
+        SOTA: Ensures folder exists using Metadata first, then Name.
+        Args:
+            entity_id: DB ID of the entity (Company/Project/Session)
+            entity_type: 'company', 'project', 'session', 'profile'
+        """
+        if not self.service: return None
+        
+        # 1. Metadata Lookup (Idempotency)
+        if entity_id:
+            existing_id = self.find_folder_by_property('db_id', entity_id, parent_id)
+            if existing_id: return existing_id
+        
+        # 2. Name Lookup (Legacy/Fallback)
         query = f"mimeType='application/vnd.google-apps.folder' and name='{name}' and trashed=false"
         if parent_id:
             query += f" and '{parent_id}' in parents"
@@ -139,11 +187,18 @@ class DriveService:
             files = results.get('files', [])
             
             if files:
+                # Found by name, but maybe missing metadata? We could update it, but let's just return.
                 return files[0]['id']
             else:
-                return self.create_folder(name, parent_id)
+                # 3. Create New
+                props = {}
+                if entity_id: props['db_id'] = entity_id
+                if entity_type: props['type'] = entity_type
+                
+                return self.create_folder(name, parent_id, app_properties=props)
+                
         except Exception as e:
-            logger.error(f"Error ensuring folder {name}: {e}")
+            logger.error(f"Error ensuring folder sota {name}: {e}")
             return None
 
     def upload_file(self, file_path: str, mime_type: str = None, parent_id: str = None) -> str:
@@ -215,6 +270,31 @@ class DriveService:
              return self.service.files().get_media(fileId=file_id).execute()
         except Exception as e:
              logger.error(f"Error downloading file {file_id}: {e}")
+             return None
+
+    def delete_file(self, file_id: str):
+        """Permanent delete of a file."""
+        if not self.service: return None
+        try:
+            self.service.files().delete(fileId=file_id).execute()
+            return True
+        except Exception as e:
+            logger.error(f"Error deleting file {file_id}: {e}")
+            return False
+
+    def update_file_metadata(self, file_id: str, body: dict) -> dict:
+        """Updates file metadata (e.g. appProperties)."""
+        if not self.service: return None
+        try:
+             updated_file = self.service.files().update(
+                 fileId=file_id, 
+                 body=body,
+                 fields='id, name, appProperties'
+             ).execute()
+             logger.info(f"Updated metadata for file {file_id}: {body}")
+             return updated_file
+        except Exception as e:
+             logger.error(f"Error updating metadata for {file_id}: {e}")
              return None
 
 # Singleton

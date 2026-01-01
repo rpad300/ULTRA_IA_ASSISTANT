@@ -2,7 +2,7 @@ fastapi
 uvicorn[standard]
 python-dotenv
 python-multipart
-google-generativeai
+google-genai
 assemblyai
 qdrant-client
 supabase
@@ -38,3 +38,7 @@ nvidia-cublas-cu12
 onnxruntime
 pyannote.audio
 aiofiles
+# deepfilternet  # Requires Rust. Install manually for SOTA denoising.
+xxhash
+pymupdf
+lightrag-hku

@@ -22,6 +22,7 @@ cd ..\..
 
 echo.
 echo 3. Building Electron...
+call npm install --silent
 call npm run build:electron
 
 echo.

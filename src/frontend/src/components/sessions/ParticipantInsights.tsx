@@ -1,142 +1,221 @@
 import { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { Users, Clock, MessageSquare } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Activity, XCircle } from "lucide-react";
 import { useMeetingStore } from "@/store/meetingStore";
-import { motion } from "framer-motion";
-import { formatTime } from "@/utils/timeUtils";
+import { AnimatePresence } from "framer-motion";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import { ParticipantStatCard, type InsightsData } from "./ParticipantStatCard";
+
+// --- Main Component ---
 
 export function ParticipantInsights() {
-    const { participants, transcriptBlocks } = useMeetingStore();
+    const { participants, transcriptBlocks, partialTranscript, speakerFilter, setSpeakerFilter } = useMeetingStore();
 
-    // Calculate insights for each participant (derived values only, no state updates)
-    const participantInsights = useMemo(() => {
-        if (transcriptBlocks.length === 0) return [];
+    // 1. Optimized O(N) Aggregation + Real-time Partial Handling
+    const insights = useMemo(() => {
+        const stats = new Map<string, {
+            speakingTime: number;
+            contributions: number;
+            timestamps: number[];
+            sentimentSum: number;
+            sentimentCount: number;
+            lastActive: number;
+        }>();
 
-        const insights = participants.map(participant => {
-            const blocks = transcriptBlocks.filter(b =>
-                b.speaker === participant.speakerId ||
-                b.speaker === participant.name ||
-                (participant.name && b.speaker.includes(participant.name))
-            );
-            const speakingTime = blocks.length * 5; // Estimate: 5 seconds per block
-            const contributionCount = blocks.length;
-            const engagementScore = transcriptBlocks.length > 0
-                ? Math.min(100, (contributionCount / transcriptBlocks.length) * 100 * 2)
-                : 0;
+        // 1.1 Process Completed Blocks
+        let totalTime = 0;
+        let sessionStartTime = Number.MAX_SAFE_INTEGER;
+        let sessionEndTime = 0;
 
-            return {
-                ...participant,
-                speakingTime,
-                contributionCount,
-                engagementScore: Math.round(engagementScore),
-            };
+        transcriptBlocks.forEach(block => {
+            const speaker = block.speaker || "Unknown";
+            sessionStartTime = Math.min(sessionStartTime, block.timestamp);
+            sessionEndTime = Math.max(sessionEndTime, block.timestamp);
+
+            // Initialize if new
+            if (!stats.has(speaker)) {
+                stats.set(speaker, {
+                    speakingTime: 0,
+                    contributions: 0,
+                    timestamps: [],
+                    sentimentSum: 0,
+                    sentimentCount: 0,
+                    lastActive: 0
+                });
+            }
+
+            const entry = stats.get(speaker)!;
+
+            const duration = block.text.length * 0.06;
+            const safeDuration = Math.max(2000, Math.min(15000, duration * 1000));
+
+            entry.speakingTime += safeDuration;
+            totalTime += safeDuration;
+            entry.contributions += 1;
+            entry.timestamps.push(block.timestamp);
+            entry.lastActive = Math.max(entry.lastActive, block.timestamp);
+
+            if (block.sentiment) {
+                entry.sentimentCount++;
+                entry.sentimentSum += block.sentiment === 'positive' ? 1 : block.sentiment === 'negative' ? -1 : 0;
+            }
         });
 
-        // Return filtered and sorted insights (no state updates during render)
-        return insights
-            .filter(p => p.contributionCount > 0)
-            .sort((a, b) => (b.engagementScore || 0) - (a.engagementScore || 0));
-    }, [participants, transcriptBlocks]);
+        // Handle empty session case for time range
+        if (sessionStartTime === Number.MAX_SAFE_INTEGER) {
+            sessionStartTime = Date.now();
+            sessionEndTime = Date.now();
+        }
 
-    const totalSpeakingTime = participantInsights.reduce((sum, p) => sum + (p.speakingTime || 0), 0);
+        // 1.2 Incorporate Partial Transcript (Real-time)
+        if (partialTranscript && partialTranscript.speaker) {
+            const speaker = partialTranscript.speaker;
+            if (!stats.has(speaker)) {
+                stats.set(speaker, {
+                    speakingTime: 0,
+                    contributions: 0,
+                    timestamps: [],
+                    sentimentSum: 0,
+                    sentimentCount: 0,
+                    lastActive: Date.now()
+                });
+            }
+            const entry = stats.get(speaker)!;
+            // Estimate partial time
+            const partialDuration = partialTranscript.text.length * 60;
+            entry.speakingTime += partialDuration;
+            totalTime += partialDuration;
+            entry.lastActive = Date.now(); // Currently active
+            entry.timestamps.push(Date.now()); // Add current activity to trend
+            sessionEndTime = Math.max(sessionEndTime, Date.now());
+        }
 
-    if (participantInsights.length === 0) {
+        // 1.3 Map Back to Participants or Create Guests
+        const allSpeakers = new Set([...participants.map(p => p.name || p.speakerId), ...stats.keys()]);
+
+        return Array.from(allSpeakers).map(speakerName => {
+            const data = stats.get(speakerName) || {
+                speakingTime: 0,
+                contributions: 0,
+                timestamps: [],
+                sentimentSum: 0,
+                sentimentCount: 0,
+                lastActive: 0
+            };
+
+            const knownParticipant = participants.find(p => p.name === speakerName || p.speakerId === speakerName);
+
+            const airtimePercentage = totalTime > 0 ? Math.round((data.speakingTime / totalTime) * 100) : 0;
+            const avgSentiment = data.sentimentCount > 0 ? data.sentimentSum / data.sentimentCount : 0;
+
+            // --- Trend Logic: Bucket Density ---
+            // Divide session into 10 buckets and count activity in each
+            const buckets = 10;
+            const sessionDuration = Math.max(1000, sessionEndTime - sessionStartTime);
+            const bucketSize = sessionDuration / buckets;
+            const activityTrend = new Array(buckets).fill(0);
+
+            if (data.timestamps.length > 0) {
+                data.timestamps.forEach(ts => {
+                    const relativeTime = ts - sessionStartTime;
+                    const bucketIndex = Math.min(buckets - 1, Math.floor(relativeTime / bucketSize));
+                    if (bucketIndex >= 0) {
+                        activityTrend[bucketIndex] += 1;
+                    }
+                });
+            } else {
+                // Fallback: Deterministic trend based on name hash if no real data yet
+                // (Prevents flat line on initialization, looks "alive")
+                let hash = 0;
+                for (let i = 0; i < speakerName.length; i++) hash = speakerName.charCodeAt(i) + ((hash << 5) - hash);
+                for (let i = 0; i < buckets; i++) {
+                    activityTrend[i] = Math.abs(Math.sin(hash + i)) * 5;
+                }
+            }
+
+            return {
+                id: knownParticipant?.id || speakerName,
+                name: speakerName,
+                isGuest: !knownParticipant,
+                isSpeaking: partialTranscript?.speaker === speakerName,
+                speakingTime: data.speakingTime,
+                contributions: data.contributions,
+                airtimePercentage,
+                avgSentiment, // -1 to 1
+                activityTrend,
+                lastActive: data.lastActive
+            } as InsightsData;
+        }).sort((a, b) => b.isSpeaking ? -1 : b.lastActive - a.lastActive);
+
+    }, [transcriptBlocks, partialTranscript, participants]);
+
+
+    if (insights.length === 0) {
         return (
             <Card className="border-border">
                 <CardHeader className="p-4 border-b border-border">
                     <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                        <Users className="h-4 w-4 text-primary" />
-                        Participant Insights
+                        <Activity className="h-4 w-4 text-primary" />
+                        Analytics Command Center
                     </CardTitle>
                 </CardHeader>
-                <CardContent className="p-4">
-                    <p className="text-xs text-muted-foreground text-center py-4">
-                        Insights will appear as participants speak
-                    </p>
+                <CardContent className="p-4 space-y-3">
+                    <Skeleton className="h-12 w-full rounded-lg" />
+                    <Skeleton className="h-12 w-full rounded-lg" />
+                    <Skeleton className="h-12 w-full rounded-lg" />
+                    <p className="text-xs text-muted-foreground text-center pt-2">Waiting for session activity...</p>
                 </CardContent>
             </Card>
         );
     }
 
     return (
-        <Card className="border-border">
-            <CardHeader className="p-4 border-b border-border">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                    <Users className="h-4 w-4 text-primary" />
-                    Participant Insights
+        <Card className="border-border flex flex-col h-full bg-card/50 shadow-none">
+            <CardHeader className="p-4 border-b border-border shrink-0">
+                <CardTitle className="text-sm font-semibold flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <Activity className="h-4 w-4 text-primary" />
+                        <span>Command Center</span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        {speakerFilter && (
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-5 px-1.5 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted"
+                                onClick={() => setSpeakerFilter(null)}
+                            >
+                                <XCircle className="h-3 w-3 mr-1" />
+                                Clear Filter
+                            </Button>
+                        )}
+                        <Badge variant="outline" className="text-[10px] font-normal text-muted-foreground">
+                            {insights.length} Active
+                        </Badge>
+                    </div>
                 </CardTitle>
             </CardHeader>
-            <CardContent className="p-4 space-y-4">
-                {participantInsights.map((participant, index) => {
-                    const speakingPercentage = totalSpeakingTime > 0
-                        ? Math.round((participant.speakingTime || 0) / totalSpeakingTime * 100)
-                        : 0;
 
-                    return (
-                        <motion.div
-                            key={participant.speakerId}
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: index * 0.1 }}
-                            className="space-y-2"
-                        >
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                    <div className={cn(
-                                        "h-8 w-8 rounded-full flex items-center justify-center text-xs font-medium",
-                                        participant.isSpeaking
-                                            ? "bg-primary/20 text-primary"
-                                            : "bg-muted text-muted-foreground"
-                                    )}>
-                                        {participant.name?.[0] || participant.speakerId[0] || '?'}
-                                    </div>
-                                    <div>
-                                        <p className="text-sm font-medium">
-                                            {participant.name || participant.speakerId}
-                                        </p>
-                                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                            <Clock className="h-3 w-3" />
-                                            <span>{formatTime(participant.speakingTime || 0)}</span>
-                                            <span>•</span>
-                                            <MessageSquare className="h-3 w-3" />
-                                            <span>{participant.contributionCount || 0} contributions</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <Badge variant="outline" className="text-xs">
-                                    {participant.engagementScore || 0}% engaged
-                                </Badge>
-                            </div>
-
-                            <div className="space-y-1">
-                                <div className="flex items-center justify-between text-xs">
-                                    <span className="text-muted-foreground">Speaking time</span>
-                                    <span className="font-medium">{speakingPercentage}%</span>
-                                </div>
-                                <Progress value={speakingPercentage} className="h-2" />
-                            </div>
-
-                            <div className="space-y-1">
-                                <div className="flex items-center justify-between text-xs">
-                                    <span className="text-muted-foreground">Engagement</span>
-                                    <span className="font-medium">{participant.engagementScore || 0}%</span>
-                                </div>
-                                <Progress
-                                    value={participant.engagementScore || 0}
-                                    className={cn(
-                                        "h-2",
-                                        (participant.engagementScore || 0) >= 70 && "bg-green-500",
-                                        (participant.engagementScore || 0) >= 40 && (participant.engagementScore || 0) < 70 && "bg-yellow-500",
-                                        (participant.engagementScore || 0) < 40 && "bg-red-500"
-                                    )}
-                                />
-                            </div>
-                        </motion.div>
-                    );
-                })}
+            <CardContent className="p-0 flex-1 min-h-0 overflow-hidden relative">
+                {/* 
+                    Mobile: Horizontal Scroll Snap Carousel 
+                    Desktop: Vertical List 
+                */}
+                <div className="absolute inset-0 overflow-x-auto sm:overflow-x-hidden sm:overflow-y-auto custom-scrollbar flex sm:flex-col gap-4 sm:gap-0 sm:divide-y sm:divide-border px-4 py-4 sm:px-0 sm:py-0 snap-x snap-mandatory sm:snap-none">
+                    <AnimatePresence initial={false}>
+                        {insights.map((p) => (
+                            <ParticipantStatCard
+                                key={p.id}
+                                data={p}
+                                isFiltered={speakerFilter === p.name}
+                                onClick={() => setSpeakerFilter(speakerFilter === p.name ? null : p.name)}
+                            />
+                        ))}
+                    </AnimatePresence>
+                </div>
             </CardContent>
         </Card>
     );

@@ -25,33 +25,61 @@ class Metric:
 class MetricsService:
     """
     In-memory metrics service. For production, consider Prometheus, Datadog, etc.
+    SOTA: Thread-safe, Optimized Sorting, Prometheus Export.
     """
     
     def __init__(self, max_history: int = 1000):
         self.max_history = max_history
         self.metrics: deque = deque(maxlen=max_history)
         self.counters: Dict[str, int] = defaultdict(int)
+        
+        # SOTA Optimization: Keep timers sorted implicitly or sort on demand?
+        # Bisect is efficient for insertion, but list.insert is O(N). 
+        # Actually standard append + regular sort is Timsort (very fast for nearly sorted).
+        # But if we read often, sorted is better. Let's stick to append + sorted() but optimized.
+        # Actually, let's use a lock first.
         self.timers: Dict[str, List[float]] = defaultdict(list)
         self.gauges: Dict[str, float] = {}
+        
+        # Concurrency Safety
+        import threading
+        self._lock = threading.Lock()
     
     def increment(self, name: str, value: int = 1, tags: Optional[Dict[str, str]] = None):
         """Increment a counter metric."""
-        self.counters[name] += value
-        self._record_metric(name, float(self.counters[name]), "counter", tags or {})
-        logger.debug(f"Metric incremented: {name} = {self.counters[name]}")
+        with self._lock:
+            self.counters[name] += value
+            # Record metric inside lock to ensure order/consistency? 
+            # Or outside to reduce contention? Inside is safer for state.
+            self._record_metric(name, float(self.counters[name]), "counter", tags or {})
+        logger.debug(f"Metric incremented: {name} = {self.counters.get(name)}")
     
     def gauge(self, name: str, value: float, tags: Optional[Dict[str, str]] = None):
         """Set a gauge metric."""
-        self.gauges[name] = value
-        self._record_metric(name, value, "gauge", tags or {})
+        with self._lock:
+            self.gauges[name] = value
+            self._record_metric(name, value, "gauge", tags or {})
     
     def timer(self, name: str, duration_seconds: float, tags: Optional[Dict[str, str]] = None):
         """Record a timing metric."""
-        if len(self.timers[name]) >= 100:  # Keep last 100 timings
-            self.timers[name].pop(0)
-        self.timers[name].append(duration_seconds)
-        self._record_metric(name, duration_seconds, "timer", tags or {})
+        import bisect
+        with self._lock:
+            # SOTA: Maintenance of sorted list if we wanted P95 speed, but pop(0) breaks it.
+            # If we keep it sorted, we can't pop "oldest" easily unless we store (timestamp, value).
+            # For simplicity and "deque" behavior, we just append.
+            # But let's optimize the stats read.
+            
+            # Limiting history size
+            if len(self.timers[name]) >= 100:
+                self.timers[name].pop(0)
+            self.timers[name].append(duration_seconds)
+            
+            self._record_metric(name, duration_seconds, "timer", tags or {})
     
+    def record_metric(self, name: str, value: float, metric_type: str, tags: Dict[str, str]):
+        """Public alias for _record_metric."""
+        self._record_metric(name, value, metric_type, tags)
+
     def _record_metric(self, name: str, value: float, metric_type: str, tags: Dict[str, str]):
         """Internal method to record a metric."""
         metric = Metric(
@@ -64,42 +92,59 @@ class MetricsService:
     
     def get_counter(self, name: str) -> int:
         """Get current counter value."""
-        return self.counters.get(name, 0)
+        with self._lock:
+            return self.counters.get(name, 0)
     
     def get_gauge(self, name: str) -> Optional[float]:
         """Get current gauge value."""
-        return self.gauges.get(name)
+        with self._lock:
+            return self.gauges.get(name)
     
     def get_timer_stats(self, name: str) -> Dict[str, float]:
         """Get statistics for a timer metric."""
-        timings = self.timers.get(name, [])
+        # Snapshot to release lock quickly
+        with self._lock:
+            timings = list(self.timers.get(name, []))
+            
         if not timings:
             return {}
         
+        # SOTA: Optimized Stat Calculation
+        # Only sort once
+        sorted_timings = sorted(timings)
+        count = len(sorted_timings)
+        
         return {
-            "count": len(timings),
-            "min": min(timings),
-            "max": max(timings),
-            "avg": sum(timings) / len(timings),
-            "p50": sorted(timings)[len(timings) // 2] if timings else 0,
-            "p95": sorted(timings)[int(len(timings) * 0.95)] if timings else 0,
-            "p99": sorted(timings)[int(len(timings) * 0.99)] if timings else 0,
+            "count": count,
+            "min": sorted_timings[0],
+            "max": sorted_timings[-1],
+            "avg": sum(sorted_timings) / count,
+            "p50": sorted_timings[count // 2],
+            "p95": sorted_timings[int(count * 0.95)],
+            "p99": sorted_timings[int(count * 0.99)],
         }
     
     def get_summary(self, last_minutes: int = 60) -> Dict:
         """Get summary of all metrics from last N minutes."""
         cutoff = datetime.now() - timedelta(minutes=last_minutes)
+        with self._lock:
+            # Copy to avoid mutation during iteration if metrics is modified
+            metrics_snapshot = list(self.metrics)
+            counters_snap = dict(self.counters)
+            gauges_snap = dict(self.gauges)
+            timers_keys = list(self.timers.keys())
+
         recent_metrics = [
-            asdict(m) for m in self.metrics
+            asdict(m) for m in metrics_snapshot
             if m.timestamp >= cutoff
         ]
         
         return {
-            "counters": dict(self.counters),
-            "gauges": dict(self.gauges),
+            "counters": counters_snap,
+            "gauges": gauges_snap,
             "timers": {
                 name: self.get_timer_stats(name)
-                for name in self.timers.keys()
+                for name in timers_keys
             },
             "recent_metrics_count": len(recent_metrics),
             "time_range_minutes": last_minutes
@@ -108,6 +153,40 @@ class MetricsService:
     def export_json(self) -> str:
         """Export metrics as JSON."""
         return json.dumps(self.get_summary(), default=str, indent=2)
+
+    def export_prometheus(self) -> str:
+        """
+        Export metrics in Prometheus text format (SOTA Interoperability).
+        """
+        lines = []
+        summary = self.get_summary(last_minutes=60) # Default window
+        
+        # Help / Type headers would be nice but optional for simple scrape
+        
+        # Counters
+        for name, value in summary["counters"].items():
+            safe_name = name.replace(".", "_").replace("-", "_")
+            lines.append(f"# TYPE {safe_name} counter")
+            lines.append(f"{safe_name}_total {value}")
+        
+        # Gauges
+        for name, value in summary["gauges"].items():
+            safe_name = name.replace(".", "_").replace("-", "_")
+            lines.append(f"# TYPE {safe_name} gauge")
+            lines.append(f"{safe_name} {value}")
+            
+        # Timers (Summary/Histogram equivalent)
+        for name, stats in summary["timers"].items():
+            safe_name = name.replace(".", "_").replace("-", "_")
+            lines.append(f"# TYPE {safe_name} summary")
+            lines.append(f"{safe_name}_count {stats.get('count', 0)}")
+            lines.append(f"{safe_name}_sum {stats.get('avg', 0) * stats.get('count', 0)}") # Approx sum
+            lines.append(f"{safe_name}{{quantile=\"0.5\"}} {stats.get('p50', 0)}")
+            lines.append(f"{safe_name}{{quantile=\"0.95\"}} {stats.get('p95', 0)}")
+            lines.append(f"{safe_name}{{quantile=\"0.99\"}} {stats.get('p99', 0)}")
+            lines.append(f"{safe_name}{{quantile=\"1.0\"}} {stats.get('max', 0)}") # Max
+            
+        return "\n".join(lines)
 
 
 # Singleton
@@ -119,6 +198,7 @@ def get_metrics_service() -> MetricsService:
     global _metrics_service
     if _metrics_service is None:
         _metrics_service = MetricsService()
+        logger.info(f"DEBUG: Initialized MetricsService: {type(_metrics_service)}")
     return _metrics_service
 
 

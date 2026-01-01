@@ -1,0 +1,79 @@
+4750d54c144
+2025-12-31 12:03:32 - routers.chat_ws - INFO - [no-request-id] - WS Accepted: Thread 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:03:33 - routers.chat_ws - INFO - [no-request-id] - Client disconnected: 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:03:33 - routers.chat_ws - INFO - [no-request-id] - WS Accepted: Thread 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:03:34 - routers.chat_ws - INFO - [no-request-id] - Client disconnected: 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:03:35 - routers.chat_ws - INFO - [no-request-id] - WS Accepted: Thread 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:03:36 - routers.chat_ws - INFO - [no-request-id] - Client disconnected: 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:03:36 - routers.chat_ws - INFO - [no-request-id] - WS Accepted: Thread 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:03:37 - routers.chat_ws - INFO - [no-request-id] - Client disconnected: 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:03:37 - routers.chat_ws - INFO - [no-request-id] - WS Accepted: Thread 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:03:38 - routers.chat_ws - INFO - [no-request-id] - Client disconnected: 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:03:39 - routers.chat_ws - INFO - [no-request-id] - WS Accepted: Thread 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:03:39 - routers.chat_ws - INFO - [no-request-id] - Client disconnected: 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:03:40 - routers.chat_ws - INFO - [no-request-id] - WS Accepted: Thread 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:03:41 - routers.chat_ws - INFO - [no-request-id] - Client disconnected: 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:03:41 - routers.chat_ws - INFO - [no-request-id] - WS Accepted: Thread 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:03:42 - routers.chat_ws - INFO - [no-request-id] - Client disconnected: 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:03:42 - routers.chat_ws - INFO - [no-request-id] - WS Accepted: Thread 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:03:43 - routers.chat_ws - INFO - [no-request-id] - Client disconnected: 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:03:43 - routers.chat_ws - INFO - [no-request-id] - WS Accepted: Thread 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:03:44 - routers.chat_ws - INFO - [no-request-id] - Client disconnected: 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:03:45 - routers.chat_ws - INFO - [no-request-id] - WS Accepted: Thread 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:03:46 - routers.chat_ws - INFO - [no-request-id] - Client disconnected: 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:03:46 - routers.chat_ws - INFO - [no-request-id] - WS Accepted: Thread 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:03:47 - routers.chat_ws - INFO - [no-request-id] - Client disconnected: 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:03:47 - routers.chat_ws - INFO - [no-request-id] - WS Accepted: Thread 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:03:48 - routers.chat_ws - INFO - [no-request-id] - Client disconnected: 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:03:49 - routers.chat_ws - INFO - [no-request-id] - WS Accepted: Thread 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:03:49 - routers.chat_ws - INFO - [no-request-id] - Client disconnected: 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:03:50 - routers.chat_ws - INFO - [no-request-id] - WS Accepted: Thread 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:03:50 - routers.chat_ws - INFO - [no-request-id] - Client disconnected: 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:03:51 - routers.chat_ws - INFO - [no-request-id] - WS Accepted: Thread 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:03:52 - routers.chat_ws - INFO - [no-request-id] - Client disconnected: 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:03:52 - routers.chat_ws - INFO - [no-request-id] - WS Accepted: Thread 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:03:53 - routers.chat_ws - INFO - [no-request-id] - Client disconnected: 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:03:53 - routers.chat_ws - INFO - [no-request-id] - WS Accepted: Thread 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:03:54 - routers.chat_ws - INFO - [no-request-id] - Client disconnected: 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:03:54 - routers.chat_ws - INFO - [no-request-id] - WS Accepted: Thread 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:03:55 - routers.chat_ws - INFO - [no-request-id] - Client disconnected: 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:03:56 - routers.chat_ws - INFO - [no-request-id] - WS Accepted: Thread 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:03:57 - routers.chat_ws - INFO - [no-request-id] - WS Accepted: Thread 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:03:57 - routers.chat_ws - INFO - [no-request-id] - Client disconnected: 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:03:58 - routers.chat_ws - INFO - [no-request-id] - Client disconnected: 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:03:58 - routers.chat_ws - INFO - [no-request-id] - WS Accepted: Thread 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:03:59 - routers.chat_ws - INFO - [no-request-id] - Client disconnected: 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:04:00 - routers.chat_ws - INFO - [no-request-id] - WS Accepted: Thread 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:04:01 - routers.chat_ws - INFO - [no-request-id] - Client disconnected: 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:04:01 - routers.chat_ws - INFO - [no-request-id] - WS Accepted: Thread 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:04:02 - routers.chat_ws - INFO - [no-request-id] - Client disconnected: 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:04:02 - routers.chat_ws - INFO - [no-request-id] - WS Accepted: Thread 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:04:03 - routers.chat_ws - INFO - [no-request-id] - Client disconnected: 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:04:03 - routers.chat_ws - INFO - [no-request-id] - WS Accepted: Thread 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:04:04 - routers.chat_ws - INFO - [no-request-id] - Client disconnected: 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:04:04 - routers.chat_ws - INFO - [no-request-id] - WS Accepted: Thread 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:04:05 - routers.chat_ws - INFO - [no-request-id] - Client disconnected: 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:04:06 - routers.chat_ws - INFO - [no-request-id] - WS Accepted: Thread 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:04:06 - routers.chat_ws - INFO - [no-request-id] - Client disconnected: 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:04:07 - routers.chat_ws - INFO - [no-request-id] - WS Accepted: Thread 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:04:08 - routers.chat_ws - INFO - [no-request-id] - Client disconnected: 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:04:08 - managers.transcription_manager - INFO - [no-request-id] - WS Disconnect 1f7f8e10-9d86-415d-8821-97db5894dd98
+2025-12-31 12:04:08 - managers.connection_manager - INFO - [no-request-id] - WebSocket disconnected for session: 1f7f8e10-9d86-415d-8821-97db5894dd98
+2025-12-31 12:04:08 - routers.native_transcription - INFO - [no-request-id] - Connection closed for 1f7f8e10-9d86-415d-8821-97db5894dd98
+2025-12-31 12:04:08 - routers.chat_ws - INFO - [no-request-id] - WS Accepted: Thread 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:04:09 - routers.chat_ws - INFO - [no-request-id] - Client disconnected: 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:04:09 - routers.chat_ws - INFO - [no-request-id] - WS Accepted: Thread 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:04:10 - routers.chat_ws - INFO - [no-request-id] - Client disconnected: 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:04:10 - routers.native_transcription - INFO - [no-request-id] - New Native Transcription Connection: 934504c0-6115-4b1b-bbba-e1642b3a3ec6 (Session: 934504c0-6115-4b1b-bbba-e1642b3a3ec6)
+2025-12-31 12:04:10 - managers.gpu_manager - WARNING - [no-request-id] - GPUManager: No CUDA devices found. Using CPU.
+2025-12-31 12:04:10 - services.audio_processor - WARNING - [no-request-id] - DeepFilterNet not installed. Denoising disabled.
+2025-12-31 12:04:10 - services.silero_vad_service - INFO - [no-request-id] - Creating VAD Iterator: Threshold=0.5, MinSilence=100ms
+2025-12-31 12:04:10 - managers.session_registry - INFO - [no-request-id] - SessionRegistry: Registered 934504c0-6115-4b1b-bbba-e1642b3a3ec6
+2025-12-31 12:04:10 - managers.transcription_manager - INFO - [no-request-id] - TranscriptionManager: Created new session state for 934504c0-6115-4b1b-bbba-e1642b3a3ec6
+2025-12-31 12:04:10 - managers.transcription_manager - INFO - [no-request-id] - TranscriptionManager: Run Start 934504c0-6115-4b1b-bbba-e1642b3a3ec6
+2025-12-31 12:04:10 - managers.connection_manager - INFO - [no-request-id] - WebSocket connected for session: 934504c0-6115-4b1b-bbba-e1642b3a3ec6
+2025-12-31 12:04:10 - managers.transcription_manager - INFO - [no-request-id] - TranscriptionManager: WebSocket Accepted
+2025-12-31 12:04:10 - managers.transcription_manager - INFO - [no-request-id] - TranscriptionManager: Sending Status {'status': 'connected', 'connection_id': '934504c0-6115-4b1b-bbba-e1642b3a3ec6', 'model': 'whisper-distil-large-v3'}
+2025-12-31 12:04:10 - managers.transcription_manager - INFO - [no-request-id] - TranscriptionManager: Status Sent
+2025-12-31 12:04:11 - routers.chat_ws - INFO - [no-request-id] - WS Accepted: Thread 1124114d-f143-4bfb-83e2-44750d54c144
+2025-12-31 12:04:12 - routers.chat_ws - INFO - [no-request-id] - Client disconnected: 1124114d-f143-4bfb-83e2-44750d54c144

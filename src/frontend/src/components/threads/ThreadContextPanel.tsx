@@ -22,13 +22,23 @@ const SessionCard = memo(({
     session,
     getSessionTypeLabel,
     onOpenSummary,
-    onOpenTranscript
+    onOpenTranscript,
+    onDelete
 }: {
     session: any;
     getSessionTypeLabel: (type: string) => string;
     onOpenSummary: (sessionId: string) => void;
     onOpenTranscript: (sessionId: string) => void;
+    onDelete: (sessionId: string) => void;
 }) => {
+    const [isConfirming, setIsConfirming] = useState(false);
+
+    useEffect(() => {
+        if (isConfirming) {
+            const timer = setTimeout(() => setIsConfirming(false), 3000);
+            return () => clearTimeout(timer);
+        }
+    }, [isConfirming]);
 
     return (
         <div className="relative pl-8 pb-6">
@@ -88,7 +98,7 @@ const SessionCard = memo(({
                         )}
                     </div>
 
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 items-center">
                         <Button
                             variant="outline"
                             size="sm"
@@ -107,6 +117,34 @@ const SessionCard = memo(({
                             <ExternalLink className="h-3 w-3 mr-1" />
                             Transcrição
                         </Button>
+                        {isConfirming ? (
+                            <Button
+                                variant="destructive"
+                                size="sm"
+                                className="h-8 animate-in fade-in zoom-in duration-200"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onDelete(session.id);
+                                    setIsConfirming(false);
+                                }}
+                            >
+                                <Trash2 className="h-3.5 w-3.5 mr-1" />
+                                Confirmar
+                            </Button>
+                        ) : (
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setIsConfirming(true);
+                                }}
+                                title="Apagar Sessão"
+                            >
+                                <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                        )}
                     </div>
                 </CardContent>
             </Card>
@@ -316,6 +354,19 @@ export function ThreadContextPanel({ threadId }: ThreadContextPanelProps) {
         toast.success("Note deleted");
     }, []);
 
+    const handleDeleteSession = useCallback(async (sessionId: string) => {
+        // Confirmation is now handled in the UI component
+
+        try {
+            await workspaceApi.deleteSession(sessionId);
+            setSessions(prev => prev.filter(s => s.id !== sessionId));
+            toast.success("Sessão apagada com sucesso");
+        } catch (error) {
+            console.error("Failed to delete session:", error);
+            toast.error("Erro ao apagar sessão");
+        }
+    }, []);
+
     return (
         <div className="flex flex-col h-full bg-card border border-border rounded-xl overflow-hidden shadow-sm">
             {/* Tabs with smooth transition */}
@@ -388,6 +439,7 @@ export function ThreadContextPanel({ threadId }: ThreadContextPanelProps) {
                                         getSessionTypeLabel={getSessionTypeLabel}
                                         onOpenSummary={handleOpenSummary}
                                         onOpenTranscript={handleOpenTranscript}
+                                        onDelete={handleDeleteSession}
                                     />
                                 ))
                             )}

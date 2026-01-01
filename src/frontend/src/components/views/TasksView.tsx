@@ -23,7 +23,11 @@ interface Task {
 }
 
 export function TasksView() {
-    const { selectedCompanyId, selectedProjectId, projects } = useWorkspaceStore();
+    // SOTA: Strict Selectors
+    const selectedCompanyId = useWorkspaceStore(state => state.selectedCompanyId);
+    const selectedProjectId = useWorkspaceStore(state => state.selectedProjectId);
+    const projects = useWorkspaceStore(state => state.projects);
+
     const [viewMode, setViewMode] = useState<ViewMode>("list");
     const [filterStatus, setFilterStatus] = useState<string>("all");
     const [tasks, setTasks] = useState<Task[]>([]);
@@ -31,6 +35,9 @@ export function TasksView() {
     const [searchQuery, setSearchQuery] = useState("");
 
     useEffect(() => {
+        const controller = new AbortController();
+        const signal = controller.signal;
+
         const loadTasks = async () => {
             setIsLoading(true);
             try {
@@ -38,17 +45,29 @@ export function TasksView() {
                 if (selectedCompanyId) filters.company_id = selectedCompanyId;
                 if (selectedProjectId) filters.project_id = selectedProjectId;
                 if (filterStatus !== "all") filters.status = filterStatus;
-                
+
+                // Using generic workspaceApi.getTasks which we assume supports cancellation or at least we ignore result
                 const tasksData = await workspaceApi.getTasks(filters);
-                setTasks(tasksData);
+
+                if (!signal.aborted) {
+                    setTasks(tasksData);
+                }
             } catch (error) {
-                console.error("Failed to load tasks:", error);
+                if (!signal.aborted) {
+                    console.error("Failed to load tasks:", error);
+                }
             } finally {
-                setIsLoading(false);
+                if (!signal.aborted) {
+                    setIsLoading(false);
+                }
             }
         };
-        
+
         loadTasks();
+
+        return () => {
+            controller.abort();
+        };
     }, [selectedCompanyId, selectedProjectId, filterStatus]);
 
     const filteredTasks = tasks.filter(task => {
@@ -73,7 +92,7 @@ export function TasksView() {
             default: return <Circle className="h-4 w-4 text-muted-foreground" />;
         }
     };
-    
+
     const getProjectName = (projectId?: string) => {
         if (!projectId) return "—";
         const project = projects.find(p => p.id === projectId);
@@ -101,8 +120,8 @@ export function TasksView() {
                 <div className="flex items-center gap-3">
                     <div className="relative w-full md:w-64">
                         <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                        <Input 
-                            placeholder="Search tasks..." 
+                        <Input
+                            placeholder="Search tasks..."
                             className="pl-9 bg-card"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}

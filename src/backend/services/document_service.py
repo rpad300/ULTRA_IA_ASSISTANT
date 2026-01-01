@@ -63,12 +63,99 @@ class DocumentService:
                 partial(gemini.upload_file, tmp_path, mime_type=mime_type)
             )
             
+            # SOTA: Active Polling for File State
+            # Files (especially videos/larges PDFs) enter PROCESSING state.
+            # We must wait for ACTIVE before returning.
+            start_time = asyncio.get_running_loop().time()
+            timeout = 300 # 5 minutes max
+            
+            while True:
+                state = await gemini.get_file_state(gemini_file.name)
+                
+                if state == "ACTIVE":
+                    break
+                elif state == "FAILED":
+                    raise ValueError(f"Gemini processing failed for {filename}")
+                
+                if asyncio.get_running_loop().time() - start_time > timeout:
+                     raise TimeoutError(f"Gemini processing timed out for {filename}")
+                
+                logger.info(f"File {filename} is {state}... waiting")
+                await asyncio.sleep(2) # Polling interval
+            
             return {
                 "uri": gemini_file.uri,
                 "name": gemini_file.name,
                 "mime_type": mime_type,
                 "display_name": filename
             }
+
+    async def process_document_upload(self, project_id: str, file: any, drive_folder_id: Optional[str]) -> Dict[str, any]:
+        """
+        SOTA Document Processing:
+        1. Upload content to Google Drive (Project/Documents)
+        2. Create Database Record
+        """
+        import asyncio
+        from services.drive_service import get_drive_service
+        from db.supabase_client import get_supabase_client
+        
+        filename = file.filename
+        content = await file.read()
+        
+        # 1. Drive Upload
+        drive = get_drive_service()
+        drive_file_id = None
+        documents_folder_id = None
+        
+        if drive and drive.service and drive_folder_id:
+            try:
+                # Ensure "Documents" subfolder exists
+                documents_folder_id = await asyncio.to_thread(
+                    drive.ensure_folder, 
+                    "Documents", 
+                    parent_id=drive_folder_id
+                )
+                
+                # Upload File
+                drive_file_id = await asyncio.to_thread(
+                    drive.upload_bytes,
+                    content,
+                    filename,
+                    file.content_type,
+                    documents_folder_id
+                )
+                logger.info(f"Uploaded document {filename} to Drive ID: {drive_file_id}")
+            except Exception as e:
+                logger.error(f"Failed to upload document to Drive: {e}")
+                # We continue to save DB record even if Drive fails (resilience)
+        
+        # 2. Database Record
+        supabase = get_supabase_client()
+        
+        doc_data = {
+            "project_id": project_id,
+            "name": filename,
+            "mime_type": file.content_type,
+            "size_bytes": len(content),
+            "drive_file_id": drive_file_id,
+            "drive_folder_id": documents_folder_id,  # Track which folder it went to
+            "metadata": {} 
+        }
+        
+        try:
+            # We use 'upsert' or 'insert'. Since new file, insert.
+            res = supabase.table("documents").insert(doc_data).execute()
+            if res.data:
+                return res.data[0]
+            else:
+                raise ValueError("Database insert returned no data")
+                
+        except Exception as e:
+             logger.error(f"Failed to save document record: {e}")
+             # If DB fails but Drive succeeded, we have an orphan. 
+             # Ideally we roll back Drive, but for now we raise.
+             raise e
 
 async def get_document_service() -> DocumentService:
     """Dependency provider for DocumentService."""

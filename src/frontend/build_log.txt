@@ -1,0 +1,7 @@
+src/components/audio/AudioVisualizer.tsx(15,26): error TS2554: Expected 1 arguments, but got 0.
+src/components/sessions/AudioDashboard.tsx(2,1): error TS6192: All imports in import declaration are unused.
+src/components/sessions/ContextPane.tsx(5,97): error TS6133: 'Brain' is declared but its value is never read.
+src/components/sessions/SessionReviewLayout.tsx(214,56): error TS2554: Expected 1 arguments, but got 4.
+src/hooks/useConflictEngine.ts(33,54): error TS6133: 'activeParticipantNames' is declared but its value is never read.
+src/hooks/usePredictiveEngine.ts(84,19): error TS6133: 'date' is declared but its value is never read.
+src/hooks/useVoiceIntelligence.ts(29,5): error TS6133: 'onCommandExecuted' is declared but its value is never read.

@@ -44,17 +44,13 @@ class CircuitBreaker:
         self.opened_at: Optional[float] = None
     
     def call(self, func: Callable, *args, **kwargs) -> Any:
-        """Execute function with circuit breaker protection."""
-        # Check if circuit should be opened
+        """Execute synchronous function with circuit breaker protection."""
         if self.state == CircuitState.OPEN:
-            if time.time() - self.opened_at > self.success_timeout:
-                # Try to recover
-                self.state = CircuitState.HALF_OPEN
-                logger.info(f"Circuit {self.name} entering HALF_OPEN state")
-            else:
-                raise Exception(f"Circuit {self.name} is OPEN")
+             if self._should_retry():
+                 self._attempt_reset()
+             else:
+                 raise Exception(f"Circuit {self.name} is OPEN")
         
-        # Execute function
         try:
             result = func(*args, **kwargs)
             self.on_success()
@@ -62,6 +58,36 @@ class CircuitBreaker:
         except Exception as e:
             self.on_failure()
             raise
+
+    async def call_async(self, func: Callable, *args, **kwargs) -> Any:
+        """Execute ASYNC function with circuit breaker protection."""
+        if self.state == CircuitState.OPEN:
+             if self._should_retry():
+                 self._attempt_reset()
+             else:
+                 raise Exception(f"Circuit {self.name} is OPEN")
+        
+        try:
+            if asyncio.iscoroutinefunction(func):
+                result = await func(*args, **kwargs)
+            else:
+                # Handle case where async wrapper wraps sync func? Rare but possible.
+                result = func(*args, **kwargs)
+                if asyncio.iscoroutine(result):
+                    result = await result
+            
+            self.on_success()
+            return result
+        except Exception as e:
+            self.on_failure()
+            raise
+
+    def _should_retry(self) -> bool:
+        return self.opened_at and (time.time() - self.opened_at > self.success_timeout)
+
+    def _attempt_reset(self):
+        self.state = CircuitState.HALF_OPEN
+        logger.info(f"Circuit {self.name} entering HALF_OPEN state")
     
     def on_success(self):
         """Handle successful call."""
@@ -123,9 +149,17 @@ def circuit_breaker(name: str, **kwargs):
         def my_function():
             ...
     """
+    import asyncio
+    
     def decorator(func: Callable) -> Callable:
         breaker = get_circuit_breaker(name, **kwargs)
         
+        if asyncio.iscoroutinefunction(func):
+            @wraps(func)
+            async def async_wrapper(*args, **kw):
+                return await breaker.call_async(func, *args, **kw)
+            return async_wrapper
+            
         @wraps(func)
         def wrapper(*args, **kw):
             return breaker.call(func, *args, **kw)

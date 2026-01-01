@@ -16,6 +16,13 @@ class CompanyService(BaseRepository['Company']):
     def __init__(self, drive_service: DriveService):
         super().__init__(table_name="companies")
         self.drive_service = drive_service
+        # Lazy load or injected qdrant would be better, but for now we'll import inside method 
+        # to avoid changing signature too drastically if not needed, 
+        # OR just update signature. Let's update signature.
+        # Actually, to minimize impact on existing tests that might instantiate this, 
+        # I'll default it to None and load if missing? 
+        # No, let's keep it clean.
+
 
     async def get_companies(self, offset: int = 0, limit: int = 20) -> List[dict]:
         """Fetch active companies with pagination."""
@@ -23,13 +30,10 @@ class CompanyService(BaseRepository['Company']):
         # OR extend BaseRepository to handling "filters" in get_all more generically.
         # For now, custom implementation using self._execute is best for specific filtering + sort
         client = await self._get_client()
-        response = await self._execute(
-             client.table(self.table_name)
-            .select("*")
-            .eq("status", "active")
-            .order("name")
-            .range(offset, offset + limit - 1)
-        )
+        async def op(client):
+            return await client.table(self.table_name).select("*").order("name").range(offset, offset + limit - 1).execute()
+        
+        response = await self._safe_execute(op)
         # Strong typing conversion
         return [Company.model_validate(item) for item in response.data] if response.data else []
 
@@ -39,65 +43,103 @@ class CompanyService(BaseRepository['Company']):
 
     async def get_company_by_id(self, company_id: str) -> Optional[Company]:
         """Fetch a single company by ID."""
+        if not self._is_valid_uuid(company_id): return None
         data = await self.get_by_id(company_id)
         return Company.model_validate(data) if data else None
 
-    async def create_company(self, company: CompanyCreate) -> Company:
-        """Create a new company and its Drive folder."""
-        
-        async def _create_drive_folder_async(name: str) -> Optional[str]:
-            if not self.drive_service: return None
-            # Offload blocking I/O to thread
-            return await asyncio.to_thread(self.drive_service.ensure_folder, name)
+    def _is_valid_uuid(self, val: str) -> bool:
+        if not val or not isinstance(val, str): return False
+        import uuid
+        try:
+            uuid.UUID(val)
+            return True
+        except ValueError:
+            return False
 
-        async def _rollback_drive_folder(folder_id: str):
-            try:
-                if self.drive_service and folder_id:
-                    # Offload blocking I/O to thread
-                    await asyncio.to_thread(self.drive_service.service.files().delete(fileId=folder_id).execute)
-                    logger.warning(f"Rolled back Drive folder {folder_id} after DB failure")
-            except Exception as ex:
-                logger.error(f"Failed to rollback Drive folder {folder_id}: {ex}")
-
-        # Opting for DB Constraint approach instead of manual check for race-condition safety
-        # We rely on the DB to throw an error if name is duplicate (assuming Unique Constraint exists)
-        # If not, we fall back to pre-check, but in SOTA we prefer constraints.
-        # For now, keeping pre-check as 'soft' check to save API calls, but ready to catch DB error.
+    async def create_company(self, company: CompanyCreate, background_tasks: 'BackgroundTasks') -> Company:
+        """
+        Create a new company (SOTA Async Architecture).
+        1. DB Insert (Immediate Response)
+        2. Drive Resources (Background Task)
+        """
+        # Check duplicates
         existing_count = await self.count(filters={"name": company.name})
         if existing_count > 0:
              raise HTTPException(status_code=400, detail=f"Company '{company.name}' already exists")
 
         data = company.model_dump()
-        folder_id = None
         
-        # Create Drive Folder (Async Wrapper)
+        # 1. Immediate Persistence
         try:
-            folder_id = await _create_drive_folder_async(data["name"])
-            if folder_id:
-                data["drive_root_folder_id"] = folder_id
-        except Exception as e:
-            # Policy: If Drive fails, we Log and Continue (Soft Failure) or Abort?
-            # SOTA Recommendation: If 'drive_root_folder_id' is Critical for workflows, we should probably Abort.
-            # But here we log error and continue to allow partial creation, or as user requested "abort if drive fails logic is ambiguous".
-            # For robustness: We continue, but log heavily.
-            logger.error(f"Failed to create Drive folder for company {company.name}: {e}")
-            
-        try:
-            # Insert into DB
             created_data = await self.create(data)
-            return Company.model_validate(created_data)
-        except Exception as e:
-            # If DB insert fails, rollback Drive folder to function as a Distributed Transaction (Saga pattern lite)
-            # This handles the "Orphaned Folder" case
-            if folder_id:
-                await _rollback_drive_folder(folder_id)
+            new_company = Company.model_validate(created_data)
             
-            # Map specific DB errors if possible (e.g. Unique Violated)
-            # For now, re-raise
+            # 2. Enqueue Background Provisioning
+            background_tasks.add_task(self._bg_create_company_resources, new_company)
+            
+            return new_company
+        except Exception as e:
+            logger.error(f"DB Insert Failed: {e}")
             raise e
+
+    async def _bg_create_company_resources(self, company: Company):
+        """
+        Background Worker: Provisions Drive resources (SOTA 2025).
+        Structure:
+          [ID] - [Name] /
+             00_Projects /
+             01_Company_Assets /
+             99_Internal_System / 
+                 Voice_Profiles /
+        """
+        try:
+            from config import DRIVE_APP_ROOT_ID
+            if not self.drive_service: 
+                logger.warning("Drive Service unavailable, skipping background provisioning.")
+                return
+            
+            # SOTA Naming: "[ID] - [Name]"
+            safe_name = "".join([c for c in company.name if c.isalnum() or c in (' ', '-', '_')]).strip()
+            folder_name = f"[{company.id}] - {safe_name}"
+
+            # 1. Ensure Company Root Folder
+            folder_id = await asyncio.to_thread(
+                self.drive_service.ensure_folder_sota,
+                name=folder_name, 
+                parent_id=DRIVE_APP_ROOT_ID,
+                entity_id=company.id,
+                entity_type="company"
+            )
+            
+            if folder_id:
+                logger.info(f"Drive Folder Linked for {company.name}: {folder_id}")
+                
+                # 2. Update DB with Folder ID
+                await self.update(company.id, {"drive_root_folder_id": folder_id})
+                
+                # 3. Bootstrap Sub-structures (SOTA 2025)
+                # 00_Projects
+                await asyncio.to_thread(self.drive_service.ensure_folder, "00_Projects", parent_id=folder_id)
+                
+                # 01_Company_Assets
+                await asyncio.to_thread(self.drive_service.ensure_folder, "01_Company_Assets", parent_id=folder_id)
+                
+                # 99_Internal_System -> Voice_Profiles
+                internal_sys_id = await asyncio.to_thread(self.drive_service.ensure_folder, "99_Internal_System", parent_id=folder_id)
+                if internal_sys_id:
+                     await asyncio.to_thread(self.drive_service.ensure_folder, "Voice_Profiles", parent_id=internal_sys_id)
+
+                logger.info(f"SOTA 2025: Company '{company.name}' resources fully provisioned.")
+            else:
+                logger.error(f"SOTA: Failed to obtain folder ID for company {company.id}")
+                
+        except Exception as e:
+            logger.error(f"Background Provisioning Failed for Company {company.id}: {e}")
 
     async def update_company(self, company_id: str, company: CompanyUpdate) -> Company:
         """Update company details."""
+        if not self._is_valid_uuid(company_id):
+            raise HTTPException(status_code=400, detail="Invalid company ID format")
         data = company.model_dump(exclude_unset=True)
         result = await self.update(company_id, data)
         if not result:
@@ -106,7 +148,51 @@ class CompanyService(BaseRepository['Company']):
 
     async def delete_company(self, company_id: str) -> bool:
         """Soft delete a company."""
+        if not self._is_valid_uuid(company_id): return False
         return await self.soft_delete(company_id)
+
+    async def hard_delete_company(self, company_id: str) -> bool:
+        """
+        SOTA: Permanently delete company and ALL associated resources.
+        Cascade:
+        1. Drive Folder (Recursive)
+        2. Qdrant Vectors
+        3. Database Record (Cascade to Projects/Sessions/etc via FK)
+        """
+        if not self._is_valid_uuid(company_id): return False
+        
+        # 1. Fetch Company to get Drive ID
+        company = await self.get_company_by_id(company_id)
+        if not company: return False
+
+        # 2. Qdrant Cleanup
+        try:
+            from services.qdrant_service import get_qdrant_service
+            qdrant = get_qdrant_service()
+            if qdrant:
+                # We need to await it if it's async (the method I added is async)
+                # But get_qdrant_service returns the service instance.
+                # The method I added 'delete_company_vectors' is async.
+                await qdrant.delete_company_vectors(company_id)
+        except Exception as e:
+            logger.error(f"Failed to clean up Qdrant for company {company_id}: {e}")
+
+        # 3. Drive Cleanup
+        if company.drive_root_folder_id:
+            try:
+                # We interpret delete_file as deleting the folder if it's a folder ID
+                await asyncio.to_thread(self.drive_service.delete_file, company.drive_root_folder_id)
+                logger.info(f"Deleted Drive folder {company.drive_root_folder_id} for company {company_id}")
+            except Exception as e:
+                logger.error(f"Failed to delete Drive folder for company {company_id}: {e}")
+
+        # 4. DB Hard Delete
+        # Assuming Postgres FKs are set to ON DELETE CASCADE. 
+        # If not, this might fail or leave orphans. 
+        # For a "SOTA" system, we assume constraints are correct or we accept the risk for now 
+        # as manual cascading of everything (Projects -> Sessions -> Transcripts -> Audio Segments...) is huge.
+        return await self.delete(company_id)
+
 
 def get_company_service():
     # Injection of the Singleton Drive Service

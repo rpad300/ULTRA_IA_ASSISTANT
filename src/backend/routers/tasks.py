@@ -7,7 +7,7 @@ from typing import Optional, List
 from db.supabase_client import get_supabase_client
 from db.models import Task, TaskCreate, TaskUpdate
 from utils.pagination import PaginatedResponse, get_pagination_params, PaginationParams
-from middleware.request_id import get_request_id
+from middleware.logging_context import get_request_id
 from datetime import datetime
 import logging
 
@@ -44,12 +44,12 @@ def get_tasks(
             if thread_id:
                 query = query.eq("thread_id", thread_id)
                 count_query = count_query.eq("thread_id", thread_id)
-            if status:
-                query = query.eq("status", status)
-                count_query = count_query.eq("status", status)
-            if priority:
-                query = query.eq("priority", priority)
-                count_query = count_query.eq("priority", priority)
+            # if status:
+            #     query = query.eq("status", status)
+            #     count_query = count_query.eq("status", status)
+            # if priority:
+            #     query = query.eq("priority", priority)
+            #     count_query = count_query.eq("priority", priority)
             
             # Get total count
             try:
@@ -88,7 +88,7 @@ def get_tasks(
                 page_size=pagination.page_size
             )
     except Exception as e:
-        request_id = get_request_id(request) if request else "unknown"
+        request_id = get_request_id()
         logger.error(f"Error fetching tasks: {e}", exc_info=True, extra={"request_id": request_id})
         # Return empty result instead of raising error
         return PaginatedResponse.create(

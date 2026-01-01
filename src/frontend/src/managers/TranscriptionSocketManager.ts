@@ -62,11 +62,36 @@ export class TranscriptionSocketManager {
                     );
                     break;
 
+                case 'speaker_assignment':
+                    console.log('[Socket] Speaker Assigned:', data);
+                    // data.guest_id corresponds to the temporary name/id used in the transcript (e.g. "Guest 1")
+                    store.updateSpeakerByTrace(
+                        data.guest_id,
+                        data.contact_id,
+                        data.contact_name
+                    );
+                    break;
+
                 case 'intelligence_update':
                 case 'cross_meeting_patterns':
                     // Insights enviados via Server-Push (RAG/Patterns)
                     if (store.addCrossMeetingPattern) {
                         store.addCrossMeetingPattern(data.pattern || data);
+                    }
+                    break;
+
+                case 'insight':
+                    console.log('[Socket] Oracle Insight:', data);
+                    if (store.setLastInsight) {
+                        store.setLastInsight({
+                            id: data.trace_id || Date.now().toString(),
+                            type: data.insight_type,
+                            text: data.text,
+                            confidence: data.confidence,
+                            sourceLink: data.source_link,
+                            relatedFact: data.related_fact,
+                            timestamp: Date.now()
+                        });
                     }
                     break;
 

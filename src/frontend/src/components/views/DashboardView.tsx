@@ -11,7 +11,7 @@ import { ThreadForm } from "@/components/threads/ThreadForm";
 
 export function DashboardView() {
     const navigate = useNavigate();
-    const { companies, selectedCompanyId, selectedProjectId } = useWorkspaceStore();
+    const { companies, selectedCompanyId, selectedProjectId, selectCompany } = useWorkspaceStore();
     const [timeOfDay, setTimeOfDay] = useState("");
     const [stats, setStats] = useState<any>(null);
     const [todayMeetings, setTodayMeetings] = useState<any[]>([]);
@@ -21,11 +21,14 @@ export function DashboardView() {
     const [isThreadFormOpen, setIsThreadFormOpen] = useState(false);
 
     useEffect(() => {
+        // Clear selection when entering dashboard (Home)
+        selectCompany(null);
+
         const hour = new Date().getHours();
         if (hour < 12) setTimeOfDay("Good morning");
         else if (hour < 18) setTimeOfDay("Good afternoon");
         else setTimeOfDay("Good evening");
-    }, []);
+    }, [selectCompany]);
 
     useEffect(() => {
         const loadDashboardData = async () => {

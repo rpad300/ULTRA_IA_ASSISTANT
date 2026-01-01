@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { Company } from "@/api/client";
 import { CompanyForm } from "@/components/companies/CompanyForm";
-import { Plus, Building2, MoreHorizontal, Edit, Trash2, Globe, ArrowUpRight, AlertCircle, Search, Briefcase } from "lucide-react";
+import { Plus, Building2, MoreHorizontal, Edit, Trash2, Globe, ArrowUpRight, AlertCircle, Search, Briefcase, Archive } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "@/components/ui/toast";
 import { Input } from "@/components/ui/input";
@@ -16,19 +16,20 @@ import { cn } from "@/lib/utils";
 
 export function CompaniesView() {
     const navigate = useNavigate();
-    const {
-        companies,
-        projects,
-        fetchCompanies,
-        selectCompany,
-        deleteCompany,
-        isLoading,
-    } = useWorkspaceStore();
+
+    // SOTA: Strict Selectors
+    const companies = useWorkspaceStore(state => state.companies);
+    const projects = useWorkspaceStore(state => state.projects);
+    const fetchCompanies = useWorkspaceStore(state => state.fetchCompanies);
+    const selectCompany = useWorkspaceStore(state => state.selectCompany);
+    const deleteCompany = useWorkspaceStore(state => state.deleteCompany);
+    const isLoading = useWorkspaceStore(state => state.isLoading);
 
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingCompany, setEditingCompany] = useState<Company | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+    const [hardDeleteConfirmOpen, setHardDeleteConfirmOpen] = useState(false);
     const [companyToDelete, setCompanyToDelete] = useState<string | null>(null);
 
     const {
@@ -44,16 +45,26 @@ export function CompaniesView() {
     );
 
     useEffect(() => {
+        const controller = new AbortController();
+        const signal = controller.signal;
+
         const loadCompanies = async () => {
             try {
-                setError(null);
+                if (!signal.aborted) setError(null);
                 await fetchCompanies();
             } catch (e) {
-                setError("Failed to load companies");
-                toast.error("Failed to load companies. Please try again.");
+                if (!signal.aborted) {
+                    setError("Failed to load companies");
+                    toast.error("Failed to load companies. Please try again.");
+                }
             }
         };
+
         loadCompanies();
+
+        return () => {
+            controller.abort();
+        };
     }, [fetchCompanies]);
 
     // Keyboard shortcuts
@@ -90,24 +101,31 @@ export function CompaniesView() {
         setDeleteConfirmOpen(true);
     };
 
+    const handleHardDelete = (e: React.MouseEvent, id: string) => {
+        e.stopPropagation();
+        setCompanyToDelete(id);
+        setHardDeleteConfirmOpen(true);
+    };
+
     const confirmDelete = async () => {
         if (!companyToDelete) return;
         try {
-            // Optimistic update
-            const company = companies.find(c => c.id === companyToDelete);
-            if (company) {
-                useWorkspaceStore.getState().setCompanies(
-                    companies.filter(c => c.id !== companyToDelete)
-                );
-            }
-
             await deleteCompany(companyToDelete);
             toast.success("Company deactivated successfully");
             setCompanyToDelete(null);
         } catch (e) {
-            // Rollback on error
-            await fetchCompanies();
             toast.error("Failed to deactivate company");
+        }
+    };
+
+    const confirmHardDelete = async () => {
+        if (!companyToDelete) return;
+        try {
+            await useWorkspaceStore.getState().hardDeleteCompany(companyToDelete);
+            toast.success("Company and all data deleted permanently");
+            setCompanyToDelete(null);
+        } catch (e) {
+            toast.error("Failed to delete company permanently");
         }
     };
 
@@ -253,8 +271,11 @@ export function CompaniesView() {
                                             <DropdownMenuItem onClick={(e) => handleEdit(e, company)}>
                                                 <Edit className="mr-2 h-4 w-4" /> Edit
                                             </DropdownMenuItem>
-                                            <DropdownMenuItem className="text-red-600 focus:text-red-600" onClick={(e) => handleDelete(e, company.id)}>
-                                                <Trash2 className="mr-2 h-4 w-4" /> Deactivate
+                                            <DropdownMenuItem className="text-amber-600 focus:text-amber-600" onClick={(e) => handleDelete(e, company.id)}>
+                                                <Archive className="mr-2 h-4 w-4" /> Deactivate
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem className="text-red-600 focus:text-red-600 focus:bg-red-50" onClick={(e) => handleHardDelete(e, company.id)}>
+                                                <Trash2 className="mr-2 h-4 w-4" /> Delete Permanently
                                             </DropdownMenuItem>
                                         </DropdownMenuContent>
                                     </DropdownMenu>
@@ -328,11 +349,22 @@ export function CompaniesView() {
                 open={deleteConfirmOpen}
                 onOpenChange={setDeleteConfirmOpen}
                 title="Deactivate Company"
-                description="Are you sure you want to deactivate this company? This action can be undone later."
+                description="Are you sure you want to deactivate this company? It will be hidden from normal views but can be restored by an admin. Projects will remain intact."
                 confirmText="Deactivate"
                 cancelText="Cancel"
                 variant="destructive"
                 onConfirm={confirmDelete}
+            />
+
+            <ConfirmDialog
+                open={hardDeleteConfirmOpen}
+                onOpenChange={setHardDeleteConfirmOpen}
+                title="Delete Company Permanently"
+                description="WARNING: This will permanently delete the company from the Database, remove all associated Vectors in Qdrant, and delete the Google Drive folder hierarchy. This action CANNOT be undone."
+                confirmText="Delete Everything"
+                cancelText="Cancel"
+                variant="destructive"
+                onConfirm={confirmHardDelete}
             />
         </div>
     );

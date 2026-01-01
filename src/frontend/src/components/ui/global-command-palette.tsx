@@ -115,7 +115,7 @@ export function GlobalCommandPalette({ open, onOpenChange }: GlobalCommandPalett
                 </CommandGroup>
 
                 <CommandGroup heading="Threads">
-                    {threads.slice(0, 10).map((thread) => (
+                    {(threads || []).slice(0, 10).map((thread) => (
                         <CommandItem
                             key={thread.id}
                             value={thread.title}

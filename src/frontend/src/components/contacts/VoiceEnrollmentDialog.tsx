@@ -35,7 +35,7 @@ export const VoiceEnrollmentDialog: React.FC<VoiceEnrollmentDialogProps> = ({ is
     const { audioServiceStatus, getAudioServiceStatus } = useMeetingStore();
     // Use store status for availability, or local state if we want to override/check manually? 
     // The store is more reliable for global status.
-    const isNativeAvailable = audioServiceStatus?.isBackendConnected;
+    const isNativeAvailable = audioServiceStatus?.infrastructure.backend.status === 'connected';
     const [nativeFilePath, setNativeFilePath] = useState<string | null>(null);
     const [isNativeRecording, setIsNativeRecording] = useState(false);
     const [transcriptionService, setTranscriptionService] = useState<'assemblyai' | 'whisper'>('assemblyai');

@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends, Request, status
 from pydantic import BaseModel
+from typing import Optional
 import logging
 from services.local_speaker_service import LocalSpeakerService, get_local_speaker_service
 from middleware.auth import get_current_user
@@ -13,6 +14,7 @@ logger = logging.getLogger(__name__)
 class AssignSpeakerRequest(BaseModel):
     trace_id: str
     contact_id: str
+    session_id: Optional[str] = None # SOTA: Know which session this happened in
 
 @router.post("/assign", status_code=status.HTTP_202_ACCEPTED)
 async def assign_speaker_trace(
@@ -55,6 +57,17 @@ async def assign_speaker_trace(
         # 3. Queue Background Optimization (SOTA Pattern)
         # This keeps the UI responsive
         background_tasks.add_task(svc.assign_speaker_trace, req.trace_id, req.contact_id)
+
+        # 4. SOTA: LIVE UPDATE (Real-time Feedback)
+        if req.session_id:
+            from managers.connection_manager import manager as global_manager
+            # Try to find the active session manager
+            session_manager = global_manager.get_manager(req.session_id)
+            if session_manager:
+                logger.info(f"Triggering Live Update for Session {req.session_id}")
+                # Notify manager to map Guest ID to Real Name IMMEDIATELY
+                # and trigger broadcast to frontend
+                await session_manager.update_guest_mapping(req.trace_id, contact_name, req.contact_id)
         
         return {
             "status": "accepted", 

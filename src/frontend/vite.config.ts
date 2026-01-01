@@ -23,5 +23,21 @@ export default defineConfig({
         ws: true,
       },
     }
+  },
+  build: {
+    chunkSizeWarningLimit: 1600,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom'],
+          framer: ['framer-motion'],
+          ui: ['@radix-ui/react-dialog', '@radix-ui/react-dropdown-menu', '@radix-ui/react-popover', '@radix-ui/react-tooltip', 'lucide-react', 'sonner', 'vaul'],
+          charts: ['recharts'],
+          syntax: ['react-syntax-highlighter', 'react-markdown', 'remark-gfm'],
+          graph: ['cytoscape', 'react-cytoscapejs'],
+          utils: ['date-fns', 'zod', 'axios', 'zustand']
+        }
+      }
+    }
   }
 })
