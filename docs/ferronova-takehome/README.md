@@ -12,7 +12,8 @@ Turn a messy rail-programme operation into a system you can build: a governed da
 | 4 | [`03-agent.md`](03-agent.md) | Part C. What the agent proposes, never touches, reads, and where guardrails live |
 | 5 | [`04-business-value.md`](04-business-value.md) | Value tree, sizing, unlock order, KPIs, make-or-break, open questions |
 | 6 | [`ferronova-pitch.pptx`](ferronova-pitch.pptx) / [`.pdf`](ferronova-pitch.pdf) | Deliverable 2: 9 business slides + 4 backup (architecture, model, agent, planner mock) |
-| 7 | [`05-call-prep.md`](05-call-prep.md) | Walkthrough script and answers to likely challenges |
+| 7 | [`05-call-prep.md`](05-call-prep.md) | Walkthrough plan and answers to likely challenges |
+| 8 | [`06-presentation-script.md`](06-presentation-script.md) | Word-for-word 15-minute speaker script with timings |
 
 ## The idea in five lines
 
