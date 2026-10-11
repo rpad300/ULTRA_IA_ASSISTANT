@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ferronova Planner Workbench</title>
+<style>
+  :root {
+    --bg: #f4f6f9; --panel: #ffffff; --ink: #1b2533; --muted: #5f6b7a; --line: #d9e0e8;
+    --navy: #14243b; --accent: #1f6feb; --ok: #1e8e5a; --ok-bg: #e6f4ec;
+    --bad: #c23b3b; --bad-bg: #fdeeee; --warn: #b26b00; --warn-bg: #fff4e0;
+    --bar-a: #1f6feb; --bar-b: #1e8e5a; --bar-c: #7a4fd1; --outage: #c9d1db;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f151d; --panel: #18212c; --ink: #e6edf5; --muted: #9aa8b8; --line: #2b3746;
+      --navy: #0b1220; --accent: #5b9bff; --ok: #4cc38a; --ok-bg: #16352a;
+      --bad: #ff7b7b; --bad-bg: #3a1d1f; --warn: #f0b04a; --warn-bg: #3a2c12; --outage: #3a4656;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f151d; --panel: #18212c; --ink: #e6edf5; --muted: #9aa8b8; --line: #2b3746;
+    --navy: #0b1220; --accent: #5b9bff; --ok: #4cc38a; --ok-bg: #16352a;
+    --bad: #ff7b7b; --bad-bg: #3a1d1f; --warn: #f0b04a; --warn-bg: #3a2c12; --outage: #3a4656;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 14px; line-height: 1.45; }
+  header { background: var(--navy); color: #fff; padding: 14px 20px; display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; }
+  header h1 { font-size: 15px; font-weight: 700; letter-spacing: .04em; }
+  header .meta { font-family: var(--mono); font-size: 12px; color: #b9c7d8; }
+  header .meta b { color: #fff; }
+  .note { background: var(--warn-bg); color: var(--ink); padding: 8px 20px; font-size: 12.5px; border-bottom: 1px solid var(--line); }
+  nav { display: flex; gap: 4px; padding: 14px 20px 0; overflow-x: auto; }
+  nav button { border: 1px solid var(--line); border-bottom: none; background: var(--panel); color: var(--muted);
+    padding: 9px 14px; border-radius: 8px 8px 0 0; font: 600 13px var(--sans); cursor: pointer; white-space: nowrap; }
+  nav button[aria-selected="true"] { background: var(--navy); color: #fff; border-color: var(--navy); }
+  nav .count { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 4px; border-radius: 9px; background: var(--bad); color: #fff; font-size: 11px; text-align: center; }
+  main { padding: 0 20px 40px; max-width: 1200px; }
+  section.tab { background: var(--panel); border: 1px solid var(--line); border-radius: 0 10px 10px 10px; padding: 18px; }
+  section.tab[hidden] { display: none; }
+  h2 { font-size: 16px; margin-bottom: 4px; }
+  .lede { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--muted); font-weight: 600; font-size: 11.5px; padding: 7px 8px; border-bottom: 1px solid var(--line); }
+  td { padding: 9px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td.mono, .mono { font-family: var(--mono); font-size: 12.5px; }
+  .pill { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; }
+  .pill.ok { background: var(--ok-bg); color: var(--ok); }
+  .pill.bad { background: var(--bad-bg); color: var(--bad); }
+  .pill.warn { background: var(--warn-bg); color: var(--warn); }
+  .grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; }
+  @media (max-width: 900px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+  .card { border: 1px solid var(--line); border-radius: 10px; padding: 14px; background: var(--panel); }
+  .card h3 { font-size: 13px; margin-bottom: 8px; }
+  .event { background: var(--bad-bg); border-color: transparent; }
+  .gantt { position: relative; margin: 6px 0 4px; }
+  .lane { display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: center; gap: 8px; margin-bottom: 8px; }
+  .lane .name { font: 700 12px var(--mono); }
+  .track { position: relative; height: 34px; background: var(--bg); border-radius: 6px; overflow: hidden; }
+  .bar { position: absolute; top: 4px; height: 26px; border-radius: 5px; color: #fff; font: 600 11px var(--sans);
+    padding: 5px 7px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar.outage { background: repeating-linear-gradient(45deg, var(--outage), var(--outage) 6px, transparent 6px, transparent 12px); color: var(--muted); }
+  .months { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 8px; }
+  .months .scale { position: relative; height: 16px; font: 11px var(--mono); color: var(--muted); }
+  .months .scale span { position: absolute; top: 0; }
+  .edit { margin-top: 12px; }
+  .edit td select, .edit td input { font: 12.5px var(--mono); padding: 5px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); max-width: 100%; }
+  .edit td .msg { font-size: 12px; margin-top: 4px; }
+  .msg.bad { color: var(--bad); } .msg.ok { color: var(--ok); }
+  .kv { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; font-size: 13px; }
+  .kv .v { font-family: var(--mono); text-align: right; }
+  .big { font: 700 22px var(--mono); }
+  .delta-bad { color: var(--bad); } .delta-ok { color: var(--ok); }
+  .btn { display: block; width: 100%; border: none; border-radius: 8px; padding: 10px 12px; margin-top: 8px; font: 700 13px var(--sans); cursor: pointer; color: #fff; }
+  .btn.commit { background: var(--ok); } .btn.dir { background: var(--warn); } .btn.reject { background: var(--bad); } .btn.reset { background: var(--muted); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .gate { margin-top: 12px; }
+  .gate .row { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 8px; padding: 5px 0; font-size: 12.5px; border-bottom: 1px dashed var(--line); }
+  .gate .code { font: 700 12px var(--mono); }
+  .gate .row.ok .code { color: var(--ok); } .gate .row.bad .code { color: var(--bad); } .gate .row.wait .code { color: var(--muted); }
+  .verdict { margin-top: 10px; padding: 10px 12px; border-radius: 8px; font-size: 13px; font-weight: 600; }
+  .verdict.ok { background: var(--ok-bg); color: var(--ok); } .verdict.bad { background: var(--bad-bg); color: var(--bad); }
+  .rationale { font-size: 12.5px; color: var(--muted); margin-top: 8px; }
+  .rule-code { display: inline-block; min-width: 34px; padding: 2px 6px; border-radius: 6px; background: var(--navy); color: #fff; font: 700 11.5px var(--mono); text-align: center; }
+  footer { padding: 12px 20px; color: var(--muted); font-size: 12px; }
+  .scroll { overflow-x: auto; }
+  @media (max-width: 700px) { section.tab > table { display: block; overflow-x: auto; } }
+  .sr { position: absolute; left: -9999px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>FERRONOVA · PLANNER WORKBENCH</h1>
+  <div class="meta">committed plan <b id="plan-version">v1</b> · signed in as <b>planner_ana</b></div>
+  <div class="meta" id="open-items">1 open event · 1 agent proposal</div>
+</header>
+<div class="note">Prototype for the walkthrough. The rules here mirror the ledger so you can click through the story. The real enforcement is in the database: see <span class="mono">sql/</span> and its 17 passing tests.</div>
+
+<nav role="tablist" aria-label="Workbench views">
+  <button role="tab" aria-selected="true" data-tab="t-portfolio">Portfolio</button>
+  <button role="tab" aria-selected="false" data-tab="t-proposal">Proposal review</button>
+  <button role="tab" aria-selected="false" data-tab="t-rules">Rules R1 to R5</button>
+  <button role="tab" aria-selected="false" data-tab="t-log">Refusals <span class="count" id="log-count">0</span></button>
+</nav>
+
+<main>
+  <!-- PORTFOLIO -->
+  <section class="tab" id="t-portfolio" role="tabpanel">
+    <h2>Portfolio against the committed plan</h2>
+    <p class="lede">One row per milestone that the scarce resources drive. Exposure is recalculated from the committed plan.</p>
+    <table>
+      <thead><tr><th>Programme</th><th>Milestone</th><th>Contract date</th><th>Forecast</th><th>Exposure</th><th>Status</th></tr></thead>
+      <tbody id="portfolio-body"></tbody>
+    </table>
+    <div class="card event" style="margin-top:14px">
+      <h3>Open event · RIG-A down 1 Mar to 15 May 2027</h3>
+      <div style="font-size:13px">Reported by the TC-1 maintenance log. Two campaigns in the committed plan now conflict with reality. The agent has drafted a re-plan.</div>
+      <button class="btn" style="background:var(--accent);max-width:240px" id="go-proposal">Review the agent's proposal</button>
+    </div>
+  </section>
+
+  <!-- PROPOSAL -->
+  <section class="tab" id="t-proposal" role="tabpanel" hidden>
+    <h2>Agent proposal · re-plan after RIG-A outage</h2>
+    <p class="lede">Edit any booking. Every change is checked against the rules immediately, the same way the ledger checks it.</p>
+    <div class="grid">
+      <div>
+        <div class="gantt" id="gantt"></div>
+        <div class="months"><div></div><div class="scale" id="scale"></div></div>
+        <div class="scroll"><table class="edit">
+          <thead><tr><th>Booking</th><th>Campaign</th><th>Rig</th><th>Start</th><th>End</th><th>Check</th></tr></thead>
+          <tbody id="edit-body"></tbody>
+        </table></div>
+        <div class="rationale" id="rationale"></div>
+      </div>
+      <aside>
+        <div class="card">
+          <h3>Impact against plan v1</h3>
+          <div class="kv">
+            <span>Penalty delta</span><span class="v big" id="delta">EUR 0</span>
+            <span>M-101 type approval</span><span class="v" id="m101">on time</span>
+            <span>M-102 type approval</span><span class="v" id="m102">on time</span>
+            <span>Bookings in conflict</span><span class="v" id="conflicts">0</span>
+            <span>Needs</span><span class="v" id="needs">planner</span>
+          </div>
+          <button class="btn dir" id="btn-director">Request director sign-off</button>
+          <button class="btn commit" id="btn-commit">Approve and commit</button>
+          <button class="btn reject" id="btn-reject">Reject with reason</button>
+          <button class="btn reset" id="btn-reset">Reset to agent proposal</button>
+          <div class="gate" id="gate" aria-live="polite"></div>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- RULES -->
+  <section class="tab" id="t-rules" role="tabpanel" hidden>
+    <h2>Five rules the plan cannot break</h2>
+    <p class="lede">R1 to R4 block what is physically impossible. R5 puts a price on what is merely expensive, and puts a person on the hook for it.</p>
+    <table>
+      <thead><tr><th>Code</th><th>Rule</th><th>What happens</th><th>Enforced in the ledger by</th></tr></thead>
+      <tbody>
+        <tr><td><span class="rule-code">R1</span></td><td>One campaign per rig, on a rig that can run the test</td><td><span class="pill bad">blocks</span></td><td class="mono">rig_exclusive (EXCLUDE) · FK rig_capability</td></tr>
+        <tr><td><span class="rule-code">R2</span></td><td>Only crews qualified for that vehicle, on those dates</td><td><span class="pill bad">blocks</span></td><td class="mono">FK crew_qualification + CHECK period &lt;@ qual_period</td></tr>
+        <tr><td><span class="rule-code">R3</span></td><td>Crews free (travel included) and inside the customer window</td><td><span class="pill bad">blocks</span></td><td class="mono">crew_exclusive (EXCLUDE) · FK access_window + CHECK</td></tr>
+        <tr><td><span class="rule-code">R4</span></td><td>Hall space never over-committed</td><td><span class="pill bad">blocks</span></td><td class="mono">hall_position_exclusive (EXCLUDE)</td></tr>
+        <tr><td><span class="rule-code">R5</span></td><td>Every plan carries its price</td><td><span class="pill warn">prices, escalates</span></td><td class="mono">v_penalty_exposure + gate G5</td></tr>
+      </tbody>
+    </table>
+    <p class="lede" style="margin-top:14px">Commit gate: G1 only planners commit · G2 no stale overwrite · G3 human approval recorded · G4 nothing booked on a known outage · G5 costly plans need a director · G6 apply in one transaction.</p>
+  </section>
+
+  <!-- LOG -->
+  <section class="tab" id="t-log" role="tabpanel" hidden>
+    <h2>Refusals are data</h2>
+    <p class="lede">Every refused change is kept with its rule. It is audit, feedback for the agent, and demand data: a rig refused again and again is the case for more capacity.</p>
+    <table>
+      <thead><tr><th>Who</th><th>Rule</th><th>Resource</th><th>What was refused</th></tr></thead>
+      <tbody id="log-body"></tbody>
+    </table>
+    <h3 style="font-size:13px;margin:16px 0 6px">Pressure by resource</h3>
+    <table>
+      <thead><tr><th>Resource</th><th>Refusals</th><th>Rules</th></tr></thead>
+      <tbody id="pressure-body"></tbody>
+    </table>
+  </section>
+</main>
+<footer>Ferronova take-home · prototype of the planner surface on Databricks Apps · reads gold for the picture and the ledger for live state</footer>
+
+<script>
+(() => {
+  const DAY = 86400000;
+  const d = s => Date.UTC(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10));
+  const iso = t => new Date(t).toISOString().slice(0, 10);
+  const fmt = t => new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+  const eur = n => "EUR " + (n >= 1e6 ? (n / 1e6).toFixed(2).replace(/\.?0+$/, "") + "M" : Math.round(n).toLocaleString("en-GB"));
+
+  const RANGE = [d("2027-02-01"), d("2027-10-01")];
+  const RIGS = { "RIG-A": ["EMC", "BRAKE"], "RIG-B": ["EMC"], "RIG-C": ["BRAKE", "PANTO"] };
+  const OUTAGES = [{ rig: "RIG-A", from: d("2027-03-01"), to: d("2027-05-15") }];
+  const CAMPAIGNS = {
+    "C-101-EMC": { type: "EMC", days: 88, milestone: "M-101-TA", color: "var(--bar-a)" },
+    "C-102-BRK": { type: "BRAKE", days: 92, milestone: "M-102-TA", color: "var(--bar-b)" },
+    "C-102-EMC": { type: "EMC", days: 60, milestone: "M-102-TA", color: "var(--bar-c)" }
+  };
+  const MILESTONES = {
+    "M-101-TA": { prog: "PRG-101 Lisbon Metro", name: "Type approval", date: d("2027-06-30"), perDay: 50000, cap: 5000000, recoverable: false },
+    "M-102-TA": { prog: "PRG-102 Porto Regional", name: "Type approval", date: d("2027-09-30"), perDay: 40000, cap: 4000000, recoverable: true }
+  };
+  const BASELINE = [
+    { key: "BK-1", campaign: "C-101-EMC", rig: "RIG-A", start: d("2027-02-01") },
+    { key: "BK-2", campaign: "C-102-BRK", rig: "RIG-A", start: d("2027-05-01") },
+    { key: "BK-3", campaign: "C-102-EMC", rig: "RIG-B", start: d("2027-04-01") }
+  ];
+  const AGENT = [
+    { key: "BK-1", campaign: "C-101-EMC", rig: "RIG-B", start: d("2027-06-01") },
+    { key: "BK-2", campaign: "C-102-BRK", rig: "RIG-C", start: d("2027-05-01") },
+    { key: "BK-3", campaign: "C-102-EMC", rig: "RIG-B", start: d("2027-04-01") }
+  ];
+  const RATIONALE = "Agent rationale: RIG-A is unavailable 1 Mar to 15 May. The only other EMC-capable rig is RIG-B, busy with C-102-EMC until 31 May, so C-101-EMC follows it from 1 Jun. C-102-BRK moves to RIG-C on the same dates.";
+
+  const clone = a => a.map(b => ({ ...b }));
+  let committed = clone(BASELINE);
+  let draft = clone(AGENT);
+  let version = 1, directorApproved = false, closed = false;
+  const log = [];
+
+  const end = b => b.start + CAMPAIGNS[b.campaign].days * DAY;
+  const overlaps = (a1, a2, b1, b2) => a1 < b2 && b1 < a2;
+
+  // R1 checks for one booking against the rest of the same plan (drafts must stay feasible).
+  function checkR1(b, plan) {
+    if (!RIGS[b.rig].includes(CAMPAIGNS[b.campaign].type))
+      return { rule: "R1", by: "rig_booking_rig_id_test_type_id_fkey", text: b.rig + " cannot run " + CAMPAIGNS[b.campaign].type + " tests" };
+    const clash = plan.find(o => o.key !== b.key && o.rig === b.rig && overlaps(b.start, end(b), o.start, end(o)));
+    if (clash) return { rule: "R1", by: "rig_exclusive", text: b.rig + " already hosts " + clash.campaign + " (" + fmt(clash.start) + " to " + fmt(end(clash)) + ")" };
+    return null;
+  }
+  const outageConflicts = plan => plan.filter(b => OUTAGES.some(o => o.rig === b.rig && overlaps(b.start, end(b), o.from, o.to)));
+
+  function exposure(plan) {
+    const out = {};
+    for (const [id, m] of Object.entries(MILESTONES)) {
+      const finish = Math.max(...plan.filter(b => CAMPAIGNS[b.campaign].milestone === id).map(end));
+      const late = Math.max(0, Math.round((finish - m.date) / DAY));
+      const gross = Math.min(m.cap, late * m.perDay);
+      out[id] = { finish, late, gross, net: m.recoverable ? 0 : gross };
+    }
+    return out;
+  }
+  const total = e => Object.values(e).reduce((s, x) => s + x.net, 0);
+
+  function addLog(who, r, resource, what) {
+    log.push({ who, rule: r.rule, by: r.by, resource, what });
+    renderLog();
+  }
+
+  // ---------- rendering ----------
+  function renderPortfolio() {
+    const e = exposure(committed), conf = outageConflicts(committed);
+    document.getElementById("portfolio-body").innerHTML = Object.entries(MILESTONES).map(([id, m]) => {
+      const x = e[id];
+      const hit = conf.some(b => CAMPAIGNS[b.campaign].milestone === id);
+      const status = hit ? '<span class="pill bad">plan conflicts with outage</span>'
+        : x.late > 0 ? '<span class="pill warn">' + x.late + ' days late' + (m.recoverable ? ', recoverable' : '') + '</span>'
+        : '<span class="pill ok">on plan</span>';
+      return "<tr><td>" + m.prog + "</td><td>" + id + " · " + m.name + "</td><td class='mono'>" + iso(m.date) +
+        "</td><td class='mono'>" + iso(x.finish) + "</td><td class='mono'>" + (x.gross ? eur(x.gross) : "EUR 0") + "</td><td>" + status + "</td></tr>";
+    }).join("");
+    document.getElementById("plan-version").textContent = "v" + version;
+    document.getElementById("open-items").textContent = version > 1 ? "0 open events · proposal committed" : "1 open event · 1 agent proposal";
+  }
+
+  function renderGantt() {
+    const span = RANGE[1] - RANGE[0];
+    const pct = t => Math.max(0, Math.min(100, (t - RANGE[0]) / span * 100));
+    const lanes = Object.keys(RIGS).map(rig => {
+      const bars = OUTAGES.filter(o => o.rig === rig).map(o =>
+        '<div class="bar outage" style="left:' + pct(o.from) + '%;width:' + (pct(o.to) - pct(o.from)) + '%">outage</div>');
+      draft.filter(b => b.rig === rig).forEach(b => {
+        const moved = BASELINE.find(x => x.key === b.key);
+        const tag = moved.rig !== b.rig ? " · from " + moved.rig : moved.start !== b.start ? " · moved" : "";
+        bars.push('<div class="bar" title="' + b.campaign + '" style="left:' + pct(b.start) + '%;width:' + (pct(end(b)) - pct(b.start)) +
+          '%;background:' + CAMPAIGNS[b.campaign].color + '">' + b.campaign + tag + '</div>');
+      });
+      return '<div class="lane"><div class="name">' + rig + '</div><div class="track">' + bars.join("") + '</div></div>';
+    });
+    document.getElementById("gantt").innerHTML = lanes.join("");
+    const months = [];
+    for (let m = 1; m <= 8; m++) {
+      const t = Date.UTC(2027, m, 1);
+      months.push('<span style="left:' + pct(t) + '%">' + new Date(t).toLocaleDateString("en-GB", { month: "short", timeZone: "UTC" }) + '</span>');
+    }
+    document.getElementById("scale").innerHTML = months.join("");
+  }
+
+  function renderEdit(lastMsg) {
+    const body = document.getElementById("edit-body");
+    body.innerHTML = draft.map(b => {
+      const rigOpts = Object.keys(RIGS).map(r => '<option' + (r === b.rig ? " selected" : "") + '>' + r + '</option>').join("");
+      const out = OUTAGES.some(o => o.rig === b.rig && overlaps(b.start, end(b), o.from, o.to));
+      const m = lastMsg && lastMsg.key === b.key ? lastMsg : null;
+      const msg = m ? '<div class="msg ' + (m.ok ? "ok" : "bad") + '">' + m.text + '</div>'
+        : out ? '<div class="msg bad">On a known outage: the gate will refuse (G4)</div>' : '<div class="msg ok">feasible</div>';
+      return '<tr><td class="mono">' + b.key + '</td><td class="mono">' + b.campaign + '<br><span style="color:var(--muted)">' +
+        CAMPAIGNS[b.campaign].type + ' · ' + CAMPAIGNS[b.campaign].days + ' days</span></td>' +
+        '<td><label class="sr" for="rig-' + b.key + '">Rig for ' + b.key + '</label><select id="rig-' + b.key + '" data-key="' + b.key + '" data-field="rig"' + (closed ? " disabled" : "") + '>' + rigOpts + '</select></td>' +
+        '<td><label class="sr" for="start-' + b.key + '">Start for ' + b.key + '</label><input type="date" id="start-' + b.key + '" data-key="' + b.key + '" data-field="start" value="' + iso(b.start) + '"' + (closed ? " disabled" : "") + '></td>' +
+        '<td class="mono">' + iso(end(b)) + '</td><td>' + msg + '</td></tr>';
+    }).join("");
+    body.querySelectorAll("select, input").forEach(el => el.addEventListener("change", onEdit));
+    document.getElementById("rationale").textContent = RATIONALE;
+  }
+
+  function renderImpact() {
+    const base = total(exposure(BASELINE));
+    const e = exposure(draft), delta = total(e) - base;
+    const dEl = document.getElementById("delta");
+    dEl.textContent = delta === 0 ? "EUR 0" : (delta > 0 ? "+ " : "- ") + eur(Math.abs(delta));
+    dEl.className = "v big " + (delta > 0 ? "delta-bad" : "delta-ok");
+    const desc = id => e[id].late ? e[id].late + " days late" + (MILESTONES[id].recoverable ? " (recoverable)" : "") : "on time";
+    document.getElementById("m101").textContent = desc("M-101-TA");
+    document.getElementById("m102").textContent = desc("M-102-TA");
+    document.getElementById("conflicts").textContent = outageConflicts(draft).length;
+    const needsDirector = delta > 250000 || Object.keys(MILESTONES).some(id => e[id].late > 0 && !MILESTONES[id].recoverable);
+    document.getElementById("needs").textContent = needsDirector ? (directorApproved ? "director approved" : "programme director") : "planner";
+    document.getElementById("btn-director").disabled = closed || !needsDirector || directorApproved;
+    document.getElementById("btn-commit").disabled = closed;
+    document.getElementById("btn-reject").disabled = closed;
+    return { delta, needsDirector };
+  }
+
+  function renderLog() {
+    document.getElementById("log-count").textContent = log.length;
+    document.getElementById("log-body").innerHTML = log.length ? log.slice().reverse().map(l =>
+      "<tr><td class='mono'>" + l.who + "</td><td><span class='rule-code'>" + l.rule + "</span></td><td class='mono'>" + l.resource +
+      "</td><td>" + l.what + "<br><span class='mono' style='color:var(--muted)'>" + l.by + "</span></td></tr>").join("")
+      : "<tr><td colspan='4' style='color:var(--muted)'>No refusals yet. Try moving a campaign onto a busy rig.</td></tr>";
+    const p = {};
+    log.forEach(l => { const k = l.resource; p[k] = p[k] || { n: 0, rules: new Set() }; p[k].n++; p[k].rules.add(l.rule); });
+    document.getElementById("pressure-body").innerHTML = Object.entries(p).sort((a, b) => b[1].n - a[1].n).map(([r, v]) =>
+      "<tr><td class='mono'>" + r + "</td><td class='mono'>" + v.n + "</td><td>" + [...v.rules].join(", ") + "</td></tr>").join("")
+      || "<tr><td colspan='3' style='color:var(--muted)'>Nothing yet.</td></tr>";
+  }
+
+  function renderAll(msg) { renderPortfolio(); renderGantt(); renderEdit(msg); renderImpact(); }
+
+  // ---------- interactions ----------
+  function onEdit(ev) {
+    const key = ev.target.dataset.key, field = ev.target.dataset.field;
+    const b = draft.find(x => x.key === key);
+    const candidate = { ...b, [field]: field === "start" ? d(ev.target.value) : ev.target.value };
+    const refusal = checkR1(candidate, draft);
+    if (refusal) {
+      addLog("planner_ana", refusal, candidate.rig, "Move " + candidate.campaign + " to " + candidate.rig + " from " + fmt(candidate.start));
+      renderAll({ key, ok: false, text: "Refused " + refusal.rule + ": " + refusal.text });
+      return;
+    }
+    Object.assign(b, candidate);
+    directorApproved = false;
+    document.getElementById("gate").innerHTML = "";
+    renderAll({ key, ok: true, text: "Saved in draft" });
+  }
+
+  function runGate() {
+    const { delta, needsDirector } = renderImpact();
+    const steps = [
+      ["G1", "Caller is a planner", true],
+      ["G2", "Proposal built on the current plan v" + version, true],
+      ["G3", "Human approval recorded (planner_ana)", true],
+      ["G4", "Nothing booked on a known outage", outageConflicts(draft).length === 0],
+      ["G5", needsDirector ? "Penalty delta " + eur(delta) + ": director sign-off " + (directorApproved ? "present" : "missing") : "Within planner authority", !needsDirector || directorApproved],
+      ["G6", "Apply in one transaction, constraints re-checked", true]
+    ];
+    const gate = document.getElementById("gate");
+    gate.innerHTML = "";
+    let failed = null;
+    steps.forEach(([code, text, ok], i) => {
+      const row = document.createElement("div");
+      row.className = "row wait";
+      row.innerHTML = '<span class="code">' + code + '</span><span>' + text + '</span>';
+      gate.appendChild(row);
+      setTimeout(() => {
+        if (failed) { row.remove(); return; }
+        row.className = "row " + (ok ? "ok" : "bad");
+        if (!ok) {
+          failed = code;
+          const rule = code === "G5" ? { rule: "R5", by: "G5" } : { rule: "GATE", by: code };
+          addLog("planner_ana", rule, "agent_proposal-1", "Commit refused: " + text);
+          const v = document.createElement("div");
+          v.className = "verdict bad";
+          v.textContent = "Not committed. " + (code === "G5" ? "Request director sign-off, or edit the plan to bring the cost under the threshold." : "Fix the conflict and try again.");
+          gate.appendChild(v);
+        } else if (i === steps.length - 1) {
+          version++; committed = clone(draft); closed = true;
+          const v = document.createElement("div");
+          v.className = "verdict ok";
+          v.textContent = "Committed as plan v" + version + ". Conflicts cleared. The portfolio now reflects the new plan.";
+          gate.appendChild(v);
+          renderAll();
+        }
+      }, 300 * (i + 1));
+    });
+  }
+
+  document.getElementById("btn-commit").addEventListener("click", runGate);
+  document.getElementById("btn-director").addEventListener("click", () => {
+    directorApproved = true;
+    document.getElementById("gate").innerHTML = '<div class="verdict ok">director_eva approved: "Accept the delay; recover via the handover buffer."</div>';
+    renderImpact();
+  });
+  document.getElementById("btn-reject").addEventListener("click", () => {
+    closed = true;
+    document.getElementById("gate").innerHTML = '<div class="verdict bad">Proposal rejected. The reason is kept and feeds the agent\'s evaluation set.</div>';
+    renderAll();
+  });
+  document.getElementById("btn-reset").addEventListener("click", () => {
+    draft = clone(AGENT); directorApproved = false; closed = false;
+    if (version > 1) { version = 1; committed = clone(BASELINE); }
+    document.getElementById("gate").innerHTML = "";
+    renderAll();
+  });
+
+  const tabs = document.querySelectorAll('[role="tab"]');
+  function show(id) {
+    tabs.forEach(t => t.setAttribute("aria-selected", String(t.dataset.tab === id)));
+    document.querySelectorAll("section.tab").forEach(s => { s.hidden = s.id !== id; });
+  }
+  tabs.forEach(t => t.addEventListener("click", () => show(t.dataset.tab)));
+  document.getElementById("go-proposal").addEventListener("click", () => show("t-proposal"));
+
+  renderAll();
+  renderLog();
+})();
+</script>
+</body>
+</html>
