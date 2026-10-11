@@ -75,7 +75,8 @@ flowchart LR
 |---|---|---|
 | Ingest DBs | **Lakeflow Connect** (or JDBC CDC jobs) for scheduling DB, ERP, CRM | Managed CDC, no custom extract code to own |
 | Ingest files | **Auto Loader** into bronze from a UC Volume (planner workbooks, MES exports) | Schema drift tolerated, every file traced (`_metadata.file_path`) |
-| Conform | **Lakeflow Declarative Pipelines** with expectations; `silver.xref_id` crosswalk; quarantine table | ID resolution is the real work. Expectations make bad rows visible with a count, never silently lost |
+| Conform | **Lakeflow Declarative Pipelines** with expectations (or DQX rules); `silver.xref_id` crosswalk; quarantine table | ID resolution is the real work. Expectations make bad rows visible with a count, never silently lost |
+| Source onboarding | **Config as data**: one governed config row per source (path or connection, keys, mappings, quality rules), reviewed in Git, read at runtime | Factory five is a config entry, not a new pipeline. The mapping is documentation that runs |
 | History | `AUTO CDC` (SCD2) on milestones, contract terms, qualifications | "What did we believe on the day we committed?" is an audit question we will get |
 | Plan of record | **Lakebase** (managed Postgres) | Only place in the stack that enforces cross-row rules (EXCLUDE), FKs, transactions, RLS. See Part A |
 | Reference into ledger | **Synced tables** UC to Lakebase | One source of truth in silver; ledger reads it, never edits it |
@@ -87,21 +88,30 @@ flowchart LR
 | Optimiser | One box, called by the agent (Model Serving endpoint or a Job) | Out of scope. Context in, structured proposal out |
 | Orchestration | **Lakeflow Jobs**, event-triggered on ledger conflicts | Re-plan runs when reality changes, not on a timer |
 
-## 3. Where the operational logic lives
+## 3. Two kinds of quality, two places
+
+- **Is this data trustworthy?** Decided between bronze and silver by expectations and the ID crosswalk. Bad rows go to quarantine with a count per factory.
+- **Is this decision committable?** Decided only by the ledger, at the moment of commit. Never as a nightly check after the fact.
+
+Mixing the two is the classic mistake: a pipeline check can report a double booking tomorrow morning, it cannot refuse it now.
+
+Also deliberate: committed decisions do **not** travel back through bronze, silver and gold. The ledger is the system of record for decisions. Its change feed lands in Delta as a governed copy for history and analytics. Routing a decision through four ingestion layers adds latency and blurs the line between "what sources said" and "what we decided".
+
+## 4. Where the operational logic lives
 
 - **Hard rules:** in the ledger schema (constraints). Not in the app, not in the agent, not in a pipeline.
 - **Business policy** (what counts as ruinous): in the ledger as data (`guardrail_policy`), applied by the commit gate. Owned by the business, changed without a deploy.
 - **Derived risk** (forecasts, exposure, utilisation): views in the ledger for scenario-level answers, gold for portfolio-level answers.
 - **Intelligence:** in the black box. It proposes. It never decides.
 
-## 4. Write-back, safely
+## 5. Write-back, safely
 
 1. The planner app reads gold for the picture and the ledger for live state (no sync lag on what you are about to change).
-2. Every edit lands in a scenario (draft). Constraints reject infeasible edits on the spot with a readable reason.
+2. Every edit lands in a scenario (draft) through the write tools. Constraints reject infeasible edits on the spot, the app shows the business rule (R1 to R5), and the refusal is logged.
 3. Commit calls `commit_scenario()` as the planner's identity. Six gates, one transaction. Either the whole re-plan lands or nothing does.
 4. The new plan version flows to Delta via the change feed and refreshes the portfolio picture.
 
-## 5. Governance: who sees and does what
+## 6. Governance: who sees and does what
 
 | Persona | Sees | Does |
 |---|---|---|
@@ -114,13 +124,13 @@ flowchart LR
 
 Grants in Unity Catalog, RLS and function grants in Lakebase. Same identities on both sides.
 
-## 6. Where this strains at portfolio scale
+## 7. Where this strains at portfolio scale
 
 - **Scenario fan-out.** Copy-on-branch is fine for tens of scenarios. Monte Carlo over hundreds of bid combinations does not belong in the ledger: run those in the lakehouse (Spark, Delta) and promote only the candidate worth committing into Lakebase.
 - **Single commit lock.** One `plan_head` lock serialises commits. Fine at tens of commits per day. At higher rates, partition the lock per resource pool (rigs, crews per region, halls per factory).
 - **Five-year horizon.** Bookings years out are low-confidence. Keep them as ranges or soft holds rather than precise dates, or the plan becomes false precision that triggers needless re-plans.
 
-## 7. Failure modes
+## 8. Failure modes
 
 1. **Shadow planning.** Planners keep the Excel workbook as the real plan and update the ledger later. The constraints then guard a fiction. Mitigation: retire the trackers explicitly, export-only Excel views, adoption measured as "% of plan changes committed through the ledger".
 2. **Silent ID drift.** A factory renames batch codes; rows fail to resolve, demand disappears from the picture, the plan looks healthier than reality. Mitigation: quarantine, unresolved-rate KPI on the dashboard, steward queue with an owner.

@@ -4,14 +4,17 @@
 
 | Min | Slide / artefact | Message |
 |---|---|---|
-| 0–2 | Deck 2–3 | The problem in their words: thin margins, hard penalties, shared scarce resources, plan in heads |
-| 2–4 | Deck 4–5 | Value and order. Penalties are the hard number; bid risk is the board case. The agent comes last, on purpose |
-| 4–9 | Data model (01) + backup 12 | **The heart.** Two planes. Every hard rule is a constraint scoped by scenario. Show the rule table and one EXCLUDE line |
-| 9–11 | Test output | Live proof: agent and planner both refused on infeasible moves; director needed above threshold; stale plan rejected |
-| 11–13 | Agent (03) + backup 13–14 | One trigger, one action. Never touches list. Guardrails live in the database, not in the prompt |
-| 13–15 | Deck 7–8 | Make or break, open questions. Invite the challenge |
+| 0–2.5 | Deck 1–3 | The problem in their words: thin margins, hard penalties, shared scarce resources, plan in heads |
+| 2.5–4.5 | Deck 4 | **The heart.** Five rules. R1–R4 block, R5 prices. Each is a database constraint, scoped by scenario |
+| 4.5–7 | `planner-prototype.html` | Live story: agent EUR 2.95M, planner refused on R1, planner gets to EUR 1.4M, G5 needs a director, plan v2 |
+| 7–8.5 | `sql/test_output.txt` | The proof: same story on the real schema, 17 tests |
+| 8.5–9.5 | Deck 6 | Refusals are data: audit, agent learning, capacity decisions |
+| 9.5–12 | Deck 7–8 | Value and order. The agent comes last, on purpose |
+| 12–15 | Deck 9–10 | Make or break, open questions. Invite the challenge |
 
-Opening line: "I spent most of my time on one question: how do we make an infeasible plan impossible to save, for a person and for an agent alike."
+Full word-for-word version: [`06-presentation-script.md`](06-presentation-script.md). Terms: [`07-concepts.md`](07-concepts.md).
+
+Opening line: "Impossible plans can't be saved. Costly plans need a name on them. I spent my two hours making the first line true in the database, and I'll show it running."
 
 ## 2. Likely challenges and how to answer
 
@@ -53,6 +56,21 @@ Ingest the planner workbook and the register, build the ID crosswalk, load rigs 
 
 **"Where did AI help, where did you override it?"**
 Have your own example ready. Honest and specific beats impressive.
+
+**"Why not just validate in one commit service with a serialised queue?"**
+That works, and it is my fallback. The difference is where the guarantee lives. In a service, the rule holds as long as that code is right and nothing else writes. In the schema, it holds for every writer, including a future one nobody planned for. I keep the gate for what only a gate can do (staleness, approvals, cost), and put the physical rules in constraints.
+
+**"Why don't committed decisions flow back through bronze and silver like every other source?"**
+Because the ledger is the system of record for decisions; it is not a source we copy. Its change feed lands in Delta for history and analytics. Sending a decision through four ingestion layers adds latency and blurs "what sources told us" with "what we decided".
+
+**"Isn't a rejection just noise? Why keep it?"**
+It is the cheapest demand signal Ferronova will ever get. A rig refused fifteen times a quarter is the case for renting capacity. It is also the agent's evaluation set, and the audit trail.
+
+**"Where does data quality sit versus the commit rules?"**
+Two questions, two places. "Is this data trustworthy?" lives in the pipelines (expectations, crosswalk, quarantine). "Is this plan committable?" lives only at commit. A pipeline check can report a double booking tomorrow; it cannot refuse it now.
+
+**"How do you onboard factory five?"**
+Config as data: one governed config row per source (connection, keys, mappings, quality rules), reviewed in Git, read at runtime. A new factory is a config entry plus crosswalk work, not a new pipeline.
 
 ## 3. Questions to ask them back
 

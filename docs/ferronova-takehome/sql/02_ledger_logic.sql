@@ -280,3 +280,113 @@ BEGIN
                       WITH CHECK (can_write_scenario(scenario_id))', t);
   END LOOP;
 END $$;
+
+-- ---------------------------------------------------------------------
+-- 5. WRITE TOOLS THAT KEEP THEIR REJECTIONS
+--    The agent and the planner app call these instead of raw SQL.
+--    They run as the caller (SECURITY INVOKER), so RLS and every
+--    constraint still apply. A refused write is rolled back and logged
+--    with the rule that refused it. Nothing here weakens a rule.
+-- ---------------------------------------------------------------------
+
+CREATE FUNCTION log_rejection(p_scenario text, p_stage text, p_enforced_by text,
+                              p_resource text, p_item text, p_detail text)
+RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path = ledger, public AS $$
+DECLARE v_rule text;
+BEGIN
+  SELECT rule_code INTO v_rule FROM rule_catalog WHERE enforced_by = p_enforced_by;
+  INSERT INTO rejection_log (actor, scenario_id, stage, rule_code, enforced_by, resource_id, item_key, detail)
+  VALUES (session_user, p_scenario, p_stage, coalesce(v_rule, 'OTHER'), p_enforced_by, p_resource, p_item, p_detail);
+  RETURN 'REJECTED ' || coalesce(v_rule, 'OTHER') || ' ' || p_enforced_by;
+END $$;
+
+-- Move a campaign to a rig and period (or leave it unscheduled with NULLs).
+CREATE FUNCTION try_move_booking(p_scenario text, p_booking_key text, p_rig text, p_period tstzrange)
+RETURNS text LANGUAGE plpgsql SECURITY INVOKER SET search_path = ledger, public AS $$
+DECLARE v_con text; v_msg text;
+BEGIN
+  UPDATE rig_booking SET rig_id = p_rig, period = p_period
+  WHERE scenario_id = p_scenario AND booking_key = p_booking_key;
+  IF NOT FOUND THEN
+    RETURN log_rejection(p_scenario, 'DRAFT', 'RLS', p_rig, p_booking_key, 'booking not writable by caller');
+  END IF;
+  RETURN 'OK';
+EXCEPTION WHEN integrity_constraint_violation OR insufficient_privilege THEN
+  GET STACKED DIAGNOSTICS v_con = CONSTRAINT_NAME, v_msg = MESSAGE_TEXT;
+  RETURN log_rejection(p_scenario, 'DRAFT', coalesce(nullif(v_con, ''), 'RLS'), p_rig, p_booking_key, v_msg);
+END $$;
+
+-- Place a crew on a commissioning shift. Business inputs only: the tool
+-- looks up qualification and window, and the constraints decide.
+CREATE FUNCTION try_assign_crew(p_scenario text, p_key text, p_crew text, p_design text,
+                                p_window text, p_period tstzrange, p_mobilise_from timestamptz,
+                                p_milestone text DEFAULT NULL)
+RETURNS text LANGUAGE plpgsql SECURITY INVOKER SET search_path = ledger, public AS $$
+DECLARE v_con text; v_msg text; v_qual tstzrange; v_site text; v_wper tstzrange;
+BEGIN
+  SELECT valid_period INTO v_qual FROM crew_qualification
+   WHERE crew_id = p_crew AND design_id = p_design
+   ORDER BY (valid_period @> p_period) DESC LIMIT 1;
+  SELECT site_id, period INTO v_site, v_wper FROM access_window WHERE window_id = p_window;
+  INSERT INTO crew_assignment (scenario_id, assignment_key, crew_id, design_id, qual_period,
+         window_id, site_id, window_period, period, mobilise_from, drives_milestone_id)
+  VALUES (p_scenario, p_key, p_crew, p_design, coalesce(v_qual, p_period),
+          p_window, coalesce(v_site, 'UNKNOWN'), coalesce(v_wper, p_period), p_period,
+          p_mobilise_from, p_milestone)
+  ON CONFLICT (scenario_id, assignment_key) DO UPDATE SET
+    crew_id = EXCLUDED.crew_id, design_id = EXCLUDED.design_id, qual_period = EXCLUDED.qual_period,
+    window_id = EXCLUDED.window_id, site_id = EXCLUDED.site_id, window_period = EXCLUDED.window_period,
+    period = EXCLUDED.period, mobilise_from = EXCLUDED.mobilise_from,
+    drives_milestone_id = EXCLUDED.drives_milestone_id;
+  RETURN 'OK';
+EXCEPTION WHEN integrity_constraint_violation OR insufficient_privilege THEN
+  GET STACKED DIAGNOSTICS v_con = CONSTRAINT_NAME, v_msg = MESSAGE_TEXT;
+  RETURN log_rejection(p_scenario, 'DRAFT', coalesce(nullif(v_con, ''), 'RLS'), p_crew, p_key, v_msg);
+END $$;
+
+-- Park a batch on a hall position.
+CREATE FUNCTION try_park_batch(p_scenario text, p_key text, p_position text, p_batch text, p_period tstzrange)
+RETURNS text LANGUAGE plpgsql SECURITY INVOKER SET search_path = ledger, public AS $$
+DECLARE v_con text; v_msg text;
+BEGIN
+  INSERT INTO hall_occupancy (scenario_id, occupancy_key, position_id, batch_id, period)
+  VALUES (p_scenario, p_key, p_position, p_batch, p_period)
+  ON CONFLICT (scenario_id, occupancy_key) DO UPDATE SET
+    position_id = EXCLUDED.position_id, batch_id = EXCLUDED.batch_id, period = EXCLUDED.period;
+  RETURN 'OK';
+EXCEPTION WHEN integrity_constraint_violation OR insufficient_privilege THEN
+  GET STACKED DIAGNOSTICS v_con = CONSTRAINT_NAME, v_msg = MESSAGE_TEXT;
+  RETURN log_rejection(p_scenario, 'DRAFT', coalesce(nullif(v_con, ''), 'RLS'), p_position, p_key, v_msg);
+END $$;
+
+-- Commit through the gate; a refusal is logged with its gate code.
+CREATE FUNCTION try_commit(p_scenario text, p_comment text)
+RETURNS text LANGUAGE plpgsql SECURITY INVOKER SET search_path = ledger, public AS $$
+DECLARE v_ver int; v_msg text;
+BEGIN
+  v_ver := commit_scenario(p_scenario, p_comment);
+  RETURN 'COMMITTED v' || v_ver;
+EXCEPTION WHEN OTHERS THEN
+  GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT;
+  RETURN log_rejection(p_scenario, 'COMMIT',
+                       CASE WHEN v_msg ~ '^G[0-9]:' THEN left(v_msg, 2) ELSE 'RLS' END,
+                       p_scenario, NULL, v_msg);
+END $$;
+
+-- Demand signal: which scarce resources keep getting refused, and why.
+CREATE VIEW v_rejection_pressure AS
+SELECT rule_code, resource_id,
+       count(*)                                          AS rejections,
+       count(DISTINCT scenario_id)                       AS scenarios,
+       string_agg(DISTINCT enforced_by, ', ')            AS refused_by,
+       max(rejected_at)                                  AS last_rejected_at
+FROM rejection_log
+GROUP BY rule_code, resource_id;
+
+REVOKE EXECUTE ON FUNCTION log_rejection(text,text,text,text,text,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION log_rejection(text,text,text,text,text,text)       TO agent, planner;
+GRANT EXECUTE ON FUNCTION try_move_booking(text,text,text,tstzrange)         TO agent, planner;
+GRANT EXECUTE ON FUNCTION try_assign_crew(text,text,text,text,text,tstzrange,timestamptz,text) TO agent, planner;
+GRANT EXECUTE ON FUNCTION try_park_batch(text,text,text,text,tstzrange)      TO agent, planner;
+GRANT EXECUTE ON FUNCTION try_commit(text,text)                              TO planner;
+GRANT SELECT ON rule_catalog, rejection_log, v_rejection_pressure TO agent, planner, programme_director;

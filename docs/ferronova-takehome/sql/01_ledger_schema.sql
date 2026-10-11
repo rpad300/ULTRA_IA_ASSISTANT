@@ -307,6 +307,33 @@ CREATE TABLE scenario_approval (
   PRIMARY KEY (scenario_id, approver)
 );
 
+-- ---------------------------------------------------------------------
+-- 7. RULE CATALOGUE AND REJECTION LOG
+--    Business rules R1-R5 traced to the exact constraint or gate that
+--    enforces them. Every refused write is kept: it is audit, agent
+--    feedback, and demand data on scarce resources ("RIG-B refused 15
+--    times this quarter" is the case for renting capacity).
+-- ---------------------------------------------------------------------
+
+CREATE TABLE rule_catalog (
+  enforced_by  text PRIMARY KEY,          -- constraint name or gate code
+  rule_code    text NOT NULL,             -- R1..R5, GATE, ACCESS
+  rule_name    text NOT NULL
+);
+
+CREATE TABLE rejection_log (
+  rejection_id  bigserial PRIMARY KEY,
+  rejected_at   timestamptz NOT NULL DEFAULT now(),
+  actor         text NOT NULL,
+  scenario_id   text,
+  stage         text NOT NULL CHECK (stage IN ('DRAFT','COMMIT')),
+  rule_code     text NOT NULL,
+  enforced_by   text NOT NULL,
+  resource_id   text,                     -- rig, crew, hall position, or scenario
+  item_key      text,
+  detail        text NOT NULL
+);
+
 -- "Ruinous" is a business threshold, owned by the business, versioned as data.
 CREATE TABLE guardrail_policy (
   singleton                         boolean PRIMARY KEY DEFAULT true CHECK (singleton),
@@ -314,3 +341,21 @@ CREATE TABLE guardrail_policy (
   escalate_if_milestone_newly_late  boolean NOT NULL,
   allow_unscheduled_campaigns       boolean NOT NULL           -- dropping demand off the plan
 );
+
+INSERT INTO rule_catalog VALUES
+ ('rig_exclusive',                                      'R1', 'One campaign per rig at a time'),
+ ('rig_booking_rig_id_test_type_id_fkey',               'R1', 'Rig must be able to run the test'),
+ ('rig_booking_scenario_id_campaign_id_key',            'R1', 'Each campaign booked once per plan'),
+ ('crew_assignment_crew_id_design_id_qual_period_fkey', 'R2', 'Crew qualified for the vehicle'),
+ ('crew_qualified_during',                              'R2', 'Qualification valid on those dates'),
+ ('crew_assignment_window_id_site_id_window_period_fkey','R3','Inside a granted customer window'),
+ ('inside_access_window',                               'R3', 'Inside a granted customer window'),
+ ('crew_exclusive',                                     'R3', 'Crew free, travel included'),
+ ('mobilise_before_start',                              'R3', 'Crew free, travel included'),
+ ('hall_position_exclusive',                            'R4', 'Hall space never over-committed'),
+ ('G5',                                                 'R5', 'Costly plan needs director sign-off'),
+ ('G1',                                                 'GATE', 'Only planners commit'),
+ ('G2',                                                 'GATE', 'No stale overwrite'),
+ ('G3',                                                 'GATE', 'Human approval recorded'),
+ ('G4',                                                 'GATE', 'No commit against known outages'),
+ ('RLS',                                                'ACCESS', 'Writer may not touch this scenario');

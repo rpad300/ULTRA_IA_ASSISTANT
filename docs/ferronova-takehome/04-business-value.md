@@ -49,6 +49,7 @@ All inputs are assumptions. The point is the shape and the sensitivity, not the 
 | **Disruption recovery** | 2 weeks recovered per major disruption at EUR 40 to 60k per day of penalty exposure | EUR 2 to 4M (overlaps partly with the line above) |
 | **Bid risk avoided** | One bid per year committed to dates the rigs cannot meet. Penalty cap on a EUR 700M bid at 10% is EUR 70M of tail exposure | Risk avoidance, not P&L. The strongest argument for leadership |
 | **Asset use** | Fewer idle rig gaps, fewer crew moves, less WIP in halls | EUR 0.5 to 2M plus working capital |
+| **Capacity decisions on evidence** | Every refused booking is logged by resource. Sustained pressure on one rig or crew pool justifies renting or hiring; no pressure avoids buying | Avoided or better-timed capex |
 | **Planner capacity** | Scenario analysis from days to minutes; planners spend time deciding instead of reconciling | Capacity, resilience, retention |
 
 Reading: the hard-number case is penalties, about **3 to 7% of annual operating profit**. The board-level case is **bid risk and resilience**. A rough build of EUR 1 to 1.5M (team of 4 to 5 for 6 to 9 months, plus platform run cost) pays back within a year if the penalty assumption holds.
@@ -80,6 +81,7 @@ Value grows with each step, and each step is the foundation of the next. The age
 | Unresolved source records | Unknown today | Below 1%, owned by stewards |
 | Rig utilisation and idle gaps | From trackers | Up, fewer gaps |
 | Agent proposals approved as-is or with edits | n/a | Rising over time |
+| Refusals per scarce resource (`v_rejection_pressure`) | n/a | Read as demand: sustained pressure on one rig or crew pool is the case for new capacity |
 
 ## 6. What makes or breaks it
 

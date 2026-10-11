@@ -7,21 +7,24 @@ Turn a messy rail-programme operation into a system you can build: a governed da
 | # | Artefact | What it answers |
 |---|---|---|
 | 1 | [`01-data-model.md`](01-data-model.md) | **Part A, the heart.** Tables, grain, keys, and how every hard rule holds |
-| 2 | [`sql/`](sql) | The model as executable SQL, with 15 tests proving the rules hold |
+| 2 | [`sql/`](sql) | The model as executable SQL, with 17 tests proving the rules hold and every refusal is logged |
 | 3 | [`02-databricks-architecture.md`](02-databricks-architecture.md) | Part B. Source to app on Databricks, governance, scale limits, failure modes |
 | 4 | [`03-agent.md`](03-agent.md) | Part C. What the agent proposes, never touches, reads, and where guardrails live |
 | 5 | [`04-business-value.md`](04-business-value.md) | Value tree, sizing, unlock order, KPIs, make-or-break, open questions |
-| 6 | [`ferronova-pitch.pptx`](ferronova-pitch.pptx) / [`.pdf`](ferronova-pitch.pdf) | Deliverable 2: 9 business slides + 4 backup (architecture, model, agent, planner mock) |
+| 6 | [`ferronova-pitch.pptx`](ferronova-pitch.pptx) / [`.pdf`](ferronova-pitch.pdf) | Deliverable 2: 11 business slides + 4 backup (architecture, model, agent, prototype) |
+| 6b | [`planner-prototype.html`](planner-prototype.html) | Clickable planner workbench: proposal, price, refusals, commit gate. Open in any browser |
 | 7 | [`05-call-prep.md`](05-call-prep.md) | Walkthrough plan and answers to likely challenges |
-| 8 | [`06-presentation-script.md`](06-presentation-script.md) | Word-for-word 15-minute speaker script with timings |
+| 8 | [`06-presentation-script.md`](06-presentation-script.md) | Word-for-word 15-minute speaker script with timings and demo steps |
+| 9 | [`07-concepts.md`](07-concepts.md) | Concepts cheat sheet: domain, architecture, model, agent, products |
 
-## The idea in five lines
+## The idea in six lines
 
 1. **Two planes.** The lakehouse (Delta, Unity Catalog) holds the conformed picture. A small plan-of-record ledger in **Lakebase** (Postgres) holds committed bookings of rigs, crews and hall space.
-2. **Rules as constraints.** Rig exclusivity, crew qualification, access windows and hall capacity are `EXCLUDE`, composite `FOREIGN KEY` and `CHECK` constraints. A double-booked rig cannot be saved, by anyone.
+2. **Five rules, enforced by the database.** R1 rig, R2 qualified crew, R3 crew free and in window, R4 hall are `EXCLUDE`, composite `FOREIGN KEY` and `CHECK` constraints: impossible to save, by anyone. R5 prices every plan and escalates costly ones to a director.
 3. **Scenarios share the structure.** The committed plan, what-ifs and agent proposals are the same tables keyed by `scenario_id`. Every scenario is feasible by construction.
 4. **One commit path.** `commit_scenario()` is the only writer of the plan of record. Six gates: identity, staleness, approval, reality, business policy, atomic apply.
-5. **The agent proposes, the model disposes, a person decides.** The agent's identity can write only its own draft.
+5. **The agent proposes, the database refuses, a person decides.** The agent's identity can write only its own draft.
+6. **Refusals are data.** Every refused write is logged with its rule: audit, agent feedback, and a demand signal on scarce resources.
 
 ## Run the proof
 
@@ -49,5 +52,5 @@ Optimiser (black box), full portfolio optimisation, cash and margin forecasting,
 
 - Bid-lands scenario end to end (crew placement in access windows).
 - Metric views for exposure and utilisation, and a Genie space on gold.
-- Clickable planner app on Databricks Apps reading the ledger.
+- Wire the prototype to the ledger as a Databricks App.
 - Evaluation set of past disruptions to score agent proposals against what planners actually did.

@@ -33,6 +33,17 @@ EXCEPTION WHEN OTHERS THEN
 END $$;
 GRANT EXECUTE ON FUNCTION public.expect_reject(text,text,text) TO PUBLIC;
 
+-- Helper: a write tool must return REJECTED with the expected rule code.
+CREATE OR REPLACE FUNCTION public.expect_rule(p_label text, p_result text, p_rule text)
+RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+  IF p_result NOT LIKE 'REJECTED ' || p_rule || ' %' THEN
+    RAISE EXCEPTION 'FAIL  % : expected % got %', p_label, p_rule, p_result;
+  END IF;
+  RAISE NOTICE 'PASS  % -> %', p_label, p_result;
+END $$;
+GRANT EXECUTE ON FUNCTION public.expect_rule(text,text,text) TO PUBLIC;
+
 -- ---------------------------------------------------------------------
 -- Seed
 -- ---------------------------------------------------------------------
@@ -116,34 +127,30 @@ SET SESSION AUTHORIZATION agent_svc;
 SELECT branch_scenario('AGENT_PROPOSAL','Re-plan after RIG-A outage', 1) AS agent_scenario \gset
 \echo agent scenario = :agent_scenario
 
-SELECT expect_reject('A1 agent moves BRAKE campaign to RIG-B (rig cannot run BRAKE)',
- format($q$UPDATE rig_booking SET rig_id='RIG-B', period='[2027-05-01,2027-08-01)'
-          WHERE scenario_id=%L AND booking_key='BK-2'$q$, :'agent_scenario'),
- 'rig_booking_rig_id_test_type_id_fkey');
+\echo Every attempt goes through the agent's write tools; refusals are logged with their rule.
+SELECT expect_rule('A1 agent moves BRAKE campaign to RIG-B (rig cannot run BRAKE)',
+ try_move_booking(:'agent_scenario','BK-2','RIG-B','[2027-05-01,2027-08-01)'), 'R1');
 
-SELECT expect_reject('A2 agent double-books RIG-B (overlaps C-102-EMC)',
- format($q$UPDATE rig_booking SET rig_id='RIG-B', period='[2027-03-01,2027-05-28)'
-          WHERE scenario_id=%L AND booking_key='BK-1'$q$, :'agent_scenario'),
- 'rig_exclusive');
+SELECT expect_rule('A2 agent double-books RIG-B (overlaps C-102-EMC)',
+ try_move_booking(:'agent_scenario','BK-1','RIG-B','[2027-03-01,2027-05-28)'), 'R1');
 
-SELECT expect_reject('A3 agent assigns unqualified crew CRW-2 to the metro design',
- format($q$UPDATE crew_assignment SET crew_id='CRW-2' WHERE scenario_id=%L AND assignment_key='CA-1'$q$, :'agent_scenario'),
- 'crew_assignment_crew_id_design_id_qual_period_fkey');
+SELECT expect_rule('A2b agent tries RIG-B again a week later (still overlaps)',
+ try_move_booking(:'agent_scenario','BK-1','RIG-B','[2027-03-08,2027-06-04)'), 'R1');
 
-SELECT expect_reject('A4 agent schedules crew outside the customer access window',
- format($q$UPDATE crew_assignment SET period='[2027-03-08 01:00+00,2027-03-08 09:00+00)'
-          WHERE scenario_id=%L AND assignment_key='CA-1'$q$, :'agent_scenario'),
- 'inside_access_window');
+SELECT expect_rule('A3 agent assigns unqualified crew CRW-2 to the metro design',
+ try_assign_crew(:'agent_scenario','CA-1','CRW-2','D-101','W-LIS-0306',
+   '[2027-03-06 23:00+00,2027-03-07 05:00+00)','2027-03-06 12:00+00','M-101-HO'), 'R2');
 
-SELECT expect_reject('A5 agent books same crew in next window without travel time overlap',
- format($q$INSERT INTO crew_assignment VALUES (%L,'CA-2','CRW-1','D-101','[2026-01-01,2029-01-01)',
-          'W-LIS-0306','NET-LIS','[2027-03-06 22:00+00,2027-03-08 05:00+00)',
-          '[2027-03-07 22:00+00,2027-03-08 04:00+00)','2027-03-07 03:00+00','M-101-HO')$q$, :'agent_scenario'),
- 'crew_exclusive');
+SELECT expect_rule('A4 agent schedules crew outside the customer access window',
+ try_assign_crew(:'agent_scenario','CA-1','CRW-1','D-101','W-LIS-0306',
+   '[2027-03-08 01:00+00,2027-03-08 09:00+00)','2027-03-07 20:00+00','M-101-HO'), 'R3');
 
-SELECT expect_reject('A6 agent parks a third batch on an occupied hall position',
- format($q$INSERT INTO hall_occupancy VALUES (%L,'HO-3','H1-P1','B-102-1','[2027-01-20,2027-02-10)')$q$, :'agent_scenario'),
- 'hall_position_exclusive');
+SELECT expect_rule('A5 agent books same crew again before travel time is over',
+ try_assign_crew(:'agent_scenario','CA-2','CRW-1','D-101','W-LIS-0306',
+   '[2027-03-07 22:00+00,2027-03-08 04:00+00)','2027-03-07 03:00+00','M-101-HO'), 'R3');
+
+SELECT expect_rule('A6 agent parks a third batch on an occupied hall position',
+ try_park_batch(:'agent_scenario','HO-3','H1-P1','B-102-1','[2027-01-20,2027-02-10)'), 'R4');
 
 SELECT expect_reject('A7 agent writes the committed plan directly',
  $q$INSERT INTO rig_booking (scenario_id, booking_key, campaign_id, test_type_id, rig_id, period)
@@ -159,10 +166,8 @@ SELECT expect_reject('A9 agent tries to commit its own proposal',
  'permission denied');
 
 \echo Agent writes a feasible proposal: EMC to RIG-B after C-102-EMC, BRAKE to RIG-C.
-UPDATE rig_booking SET rig_id='RIG-B', period='[2027-06-01,2027-08-28)'
- WHERE scenario_id=:'agent_scenario' AND booking_key='BK-1';
-UPDATE rig_booking SET rig_id='RIG-C', period='[2027-05-01,2027-08-01)'
- WHERE scenario_id=:'agent_scenario' AND booking_key='BK-2';
+SELECT try_move_booking(:'agent_scenario','BK-1','RIG-B','[2027-06-01,2027-08-28)') AS bk1,
+       try_move_booking(:'agent_scenario','BK-2','RIG-C','[2027-05-01,2027-08-01)') AS bk2;
 SELECT submit_scenario(:'agent_scenario',
  'RIG-A unavailable 1 Mar-15 May. Moved C-101-EMC to RIG-B after C-102-EMC (only EMC-capable rig free); moved C-102-BRK to RIG-C (same dates). Cost: M-101-TA forecast 59 days late.');
 RESET SESSION AUTHORIZATION;
@@ -175,21 +180,18 @@ FROM v_scenario_impact WHERE scenario_id IN ('BASELINE', :'agent_scenario') ORDE
 \echo ==== 4. Planner reviews, overrides, commits ====
 -- ---------------------------------------------------------------------
 SET SESSION AUTHORIZATION planner_ana;
-SELECT expect_reject('P1 planner override is held to the same rules (overlap on RIG-B)',
- format($q$UPDATE rig_booking SET period='[2027-05-20,2027-08-16)'
-          WHERE scenario_id=%L AND booking_key='BK-1'$q$, :'agent_scenario'),
- 'rig_exclusive');
+SELECT expect_rule('P1 planner override is held to the same rules (overlap on RIG-B)',
+ try_move_booking(:'agent_scenario','BK-1','RIG-B','[2027-05-20,2027-08-16)'), 'R1');
 
 \echo Planner override: C-102-EMC on RIG-B pulled forward 1 Mar (its rig is free), C-101-EMC follows 1 May.
-UPDATE rig_booking SET period='[2027-03-01,2027-04-30)' WHERE scenario_id=:'agent_scenario' AND booking_key='BK-3';
-UPDATE rig_booking SET period='[2027-05-01,2027-07-28)' WHERE scenario_id=:'agent_scenario' AND booking_key='BK-1';
+SELECT try_move_booking(:'agent_scenario','BK-3','RIG-B','[2027-03-01,2027-04-30)') AS bk3,
+       try_move_booking(:'agent_scenario','BK-1','RIG-B','[2027-05-01,2027-07-28)') AS bk1;
 SELECT booking_key, campaign_id, rig_id, period, last_modified_by
 FROM rig_booking WHERE scenario_id=:'agent_scenario' ORDER BY 1;
 SELECT scenario_id, penalty_delta_eur, milestones_newly_late FROM v_scenario_impact WHERE scenario_id=:'agent_scenario';
 
-SELECT expect_reject('P2 planner commits a plan that still costs penalties, without a director',
- format($q$SELECT commit_scenario(%L,'commit')$q$, :'agent_scenario'),
- 'G5');
+SELECT expect_rule('P2 planner commits a plan that still costs penalties, without a director',
+ try_commit(:'agent_scenario','commit'), 'R5');
 RESET SESSION AUTHORIZATION;
 
 SET SESSION AUTHORIZATION director_eva;
@@ -202,7 +204,7 @@ SELECT branch_scenario('WHAT_IF','What if BID-201 lands in Q2?') AS whatif \gset
 RESET SESSION AUTHORIZATION;
 
 SET SESSION AUTHORIZATION planner_ana;
-SELECT commit_scenario(:'agent_scenario','RIG-A outage re-plan, approved by director') AS new_version;
+SELECT try_commit(:'agent_scenario','RIG-A outage re-plan, approved by director') AS result;
 RESET SESSION AUTHORIZATION;
 
 -- ---------------------------------------------------------------------
@@ -213,15 +215,32 @@ SELECT version, committed_by, source_scenario_id, penalty_delta_eur, comment FRO
 SELECT count(*) AS baseline_conflicts FROM v_plan_conflicts WHERE scenario_id='BASELINE';
 
 SET SESSION AUTHORIZATION planner_joao;
-SELECT expect_reject('P3 stale what-if built on v1 cannot overwrite v2',
- format($q$SELECT commit_scenario(%L,'late commit')$q$, :'whatif'), 'G2');
+SELECT expect_rule('P3 stale what-if built on v1 cannot overwrite v2',
+ try_commit(:'whatif','late commit'), 'GATE');
 RESET SESSION AUTHORIZATION;
 
 SET SESSION AUTHORIZATION planner_joao;
 SELECT branch_scenario('WHAT_IF','Put BRAKE back on RIG-A') AS whatif2 \gset
-UPDATE rig_booking SET rig_id='RIG-A', period='[2027-04-01,2027-07-02)'
- WHERE scenario_id=:'whatif2' AND booking_key='BK-2';
-SELECT expect_reject('P4 feasible-on-paper plan that books a rig during a known outage',
- format($q$SELECT commit_scenario(%L,'commit')$q$, :'whatif2'), 'G4');
+SELECT try_move_booking(:'whatif2','BK-2','RIG-A','[2027-04-01,2027-07-02)') AS bk2;
+SELECT expect_rule('P4 feasible-on-paper plan that books a rig during a known outage',
+ try_commit(:'whatif2','commit'), 'GATE');
 RESET SESSION AUTHORIZATION;
+
+-- ---------------------------------------------------------------------
+\echo ==== 6. Rejections are kept: audit, agent feedback, demand signal ====
+-- ---------------------------------------------------------------------
+SELECT actor, stage, rule_code, enforced_by, resource_id, item_key
+FROM rejection_log ORDER BY rejection_id;
+\echo Pressure on scarce resources (the case for renting capacity):
+SELECT rule_code, resource_id, rejections, refused_by FROM v_rejection_pressure
+ORDER BY rejections DESC, resource_id;
+DO $$ BEGIN
+  IF (SELECT count(*) FROM rejection_log) <> 11 THEN
+    RAISE EXCEPTION 'FAIL  rejection log should hold 11 refusals, has %', (SELECT count(*) FROM rejection_log);
+  END IF;
+  IF (SELECT rejections FROM v_rejection_pressure WHERE resource_id='RIG-B' AND rule_code='R1') <> 4 THEN
+    RAISE EXCEPTION 'FAIL  RIG-B should show 4 R1 refusals';
+  END IF;
+  RAISE NOTICE 'PASS  L1 every refusal logged with its rule; RIG-B is the most refused resource (4 x R1)';
+END $$;
 \echo Done.

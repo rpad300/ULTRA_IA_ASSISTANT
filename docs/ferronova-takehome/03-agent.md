@@ -61,7 +61,20 @@ Read through **UC functions as tools**, each a governed object with grants, line
 
 It reads the **live ledger** for the resources it moves (no sync lag), and gold for context (portfolio risk, other programmes' exposure).
 
-## 5. Guardrails, and where they actually live
+## 5. How it writes
+
+The agent never writes raw SQL. Its whole action catalogue is four tools:
+
+| Tool | What it does | Who can call it |
+|---|---|---|
+| `branch_scenario` | Open its own draft from the committed plan | agent, planner |
+| `try_move_booking` | Move a campaign to a rig and period | agent, planner |
+| `try_assign_crew` | Place a crew in a customer window (looks up qualification and window) | agent, planner |
+| `submit_scenario` | Hand the draft to a planner with its rationale | agent, planner |
+
+Each tool returns `OK` or `REJECTED <rule> <constraint>`. A refusal is feedback for the next attempt and is kept in `rejection_log`. Over time that log is the agent's evaluation set: what it proposed, what the database refused, what planners approved, edited or rejected.
+
+## 6. Guardrails, and where they actually live
 
 | # | Guardrail | Lives in | Fails how |
 |---|---|---|---|
@@ -74,12 +87,13 @@ It reads the **live ledger** for the resources it moves (no sync lag), and gold 
 | 7 | "Ruinous" plans need a director | Gate G5 + `guardrail_policy` (business-owned data) | Commit rejected until approval |
 | 8 | No self-approval, human of record on every commit | `decide_scenario`, `plan_version.committed_by` | Rejected |
 | 9 | Every proposal explainable | MLflow trace + `scenario.rationale` + row-level diff with `last_modified_by` | Audit |
+| 10 | Every refusal kept | `rejection_log` via the write tools | Feedback, evaluation, demand signal |
 
 Guardrails 1 to 8 are enforced by the database for every caller. A prompt injection, a model bug or a wrong tool call cannot bypass them. Guardrail 9 is the quality loop.
 
-All of this is exercised in [`sql/03_seed_and_tests.sql`](sql/03_seed_and_tests.sql): tests A1 to A9 (agent), P1 to P4 (planner and commit gate).
+All of this is exercised in [`sql/03_seed_and_tests.sql`](sql/03_seed_and_tests.sql): tests A1 to A9 (agent), P1 to P4 (planner and commit gate), L1 (rejection log).
 
-## 6. Approve, override, edit
+## 7. Approve, override, edit
 
 The planner sees, per proposal:
 
@@ -90,14 +104,14 @@ The planner sees, per proposal:
 
 In the test run, the agent's proposal cost EUR 2.95M (type approval 59 days late). The planner pulled another campaign forward on the alternate rig and cut it to EUR 1.4M, then a director approved. The data model held both of them to the same rules. That is the design working: the agent does the search, the planner adds what only they know.
 
-## 7. Measuring it
+## 8. Measuring it
 
 - Time from event to committed re-plan (target: same day, from days today).
 - Acceptance rate: approved as-is / edited / rejected, with reasons.
 - Penalty delta of agent proposal versus the committed plan (how much the planner had to improve it).
-- Constraint rejections per proposal (how often the black box tries infeasible moves).
+- Constraint rejections per proposal, by rule (how often the black box tries infeasible moves, and which rule it misunderstands).
 
-## 8. In the first cut versus later
+## 9. In the first cut versus later
 
 | First cut | Later |
 |---|---|

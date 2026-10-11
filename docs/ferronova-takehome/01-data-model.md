@@ -2,6 +2,18 @@
 
 The data model is the product. Everything else (dashboards, scenarios, the agent) is a reader or a proposer on top of it.
 
+## 0. Five rules, in business language
+
+| Code | The rule | Type | Enforced by |
+|---|---|---|---|
+| **R1** | One campaign per rig, and only on a rig that can run the test | Blocks | `rig_exclusive` (EXCLUDE), FK to `rig_capability` |
+| **R2** | Only crews qualified for that vehicle, on those dates | Blocks | Composite FK to `crew_qualification` + `CHECK` |
+| **R3** | Crews free (travel included) and inside the customer's window | Blocks | `crew_exclusive` (EXCLUDE), composite FK to `access_window` + `CHECK` |
+| **R4** | Hall space is never over-committed | Blocks | `hall_position_exclusive` (EXCLUDE) |
+| **R5** | Every plan carries its price: late milestones, penalties, recoverability | Prices, escalates | `v_penalty_exposure` + commit gate G5 |
+
+R1 to R4 make the impossible impossible to save. R5 makes the expensive visible and puts a person on the hook for it. The mapping from business rule to database object is itself a table (`rule_catalog`), so every refusal is reported in business language.
+
 ## 1. The core decision: two planes, one model
 
 | Plane | What lives there | Store | Why |
@@ -74,6 +86,8 @@ Four families:
 | `scenario_approval` | one human decision on a scenario | `(scenario_id, approver)` | Ledger |
 | `plan_version` | one commit of the plan of record | `version` | Ledger |
 | `guardrail_policy` | business thresholds for "ruinous" | singleton | Business owner |
+| `rule_catalog` | constraint or gate, mapped to R1 to R5 | `enforced_by` | Ledger |
+| `rejection_log` | one refused write, with actor, rule and resource | `rejection_id` | Ledger |
 
 Time is always a half-open interval `[start, end)` (`tstzrange`). This makes overlap a single operator (`&&`) and containment another (`<@`).
 
@@ -120,16 +134,28 @@ Rule of thumb: structural truths become constraints; truths that change under a 
 - `plan_head.version` increments on every commit. A scenario remembers the version it came from. Commit takes a row lock on `plan_head` and rejects stale scenarios. Two planners cannot silently overwrite each other.
 - `plan_version` + replicated history in Delta give a full audit: who committed what, from which proposal, at what penalty delta.
 
-## 7. What the model deliberately leaves out of the ledger
+## 7. Refusals are data
+
+Agents and the planner app write through small tools (`try_move_booking`, `try_assign_crew`, `try_park_batch`, `try_commit`). They run as the caller, so RLS and every constraint still apply. When the database refuses a write, the tool rolls it back and logs it in `rejection_log` with the rule that refused it.
+
+That log serves three readers:
+
+- **Audit:** who tried what, when, and which rule stopped it.
+- **The agent:** the refusal is its feedback for the next attempt, and its history is evaluation data.
+- **The business:** `v_rejection_pressure` shows which scarce resources keep being refused. In the test run, RIG-B is refused four times under R1. Repeated over a quarter, that is the business case for renting rig capacity or adding a crew.
+
+Tested in L1 of [`sql/03_seed_and_tests.sql`](sql/03_seed_and_tests.sql).
+
+## 8. What the model deliberately leaves out of the ledger
 
 - **Shop-floor sequencing** stays in each factory's MES. The ledger owns shared scarce resources and interface dates between factories. Central planning that tries to own every machine slot fails on adoption.
 - **Bottleneck lines** (paint, final assembly) attach with the same pattern as the hall: discretise into slots, `EXCLUDE` on slot and time. Named, not built.
 - **Cost and cash** live in the lakehouse (`silver.cost_plan_month`, gold margin views). The ledger exposes the penalty delta; margin impact joins in gold.
 - **Bids** are programmes with status `BID` and a design shell, so "if this bid lands" uses the same booking tables. Bid probability weighting belongs in gold.
 
-## 8. Assumptions to validate
+## 9. Assumptions to validate
 
-- Hall space behaves as discrete bays. If it is linear metres, the rule becomes a capacity check with a lock (still in the commit plane).
+- Hall space behaves as discrete bays. If it is linear metres or square metres, R4 becomes a sum: inside the commit gate, under the existing lock, check that peak occupied length per day stays under hall capacity. Same gate, different check, same guarantee for the committed plan.
 - Mobilisation time is a conservative buffer per assignment. Exact sequence-dependent travel is the optimiser's job; the constraint guarantees the safe minimum.
 - One rig runs one campaign at a time, as the brief states. If a rig can host two light tests, model capacity per rig with positions, same as the hall.
 - Lakebase supports `btree_gist` (needed for `=` on text inside an exclusion constraint). Verify per region. Fallback: commits are already serialised by the row lock on `plan_head`, so an explicit overlap query inside `commit_scenario()` gives the same guarantee for the committed plan (drafts lose the instant feedback).

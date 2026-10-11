@@ -19,17 +19,28 @@ Conflicts now visible on the committed plan (this is what wakes the agent):
 
 ==== 3. Agent works in its own sandbox ====
 agent scenario = agent_proposal-1
-PASS  A1 agent moves BRAKE campaign to RIG-B (rig cannot run BRAKE) -> rejected: insert or update on table "rig_booking" violates foreign key constraint "rig_booking_rig_id_test_type_id_fkey"
+Every attempt goes through thepsql:03_seed_and_tests.sql:130: error: unterminated quoted string
 
-PASS  A2 agent double-books RIG-B (overlaps C-102-EMC) -> rejected: conflicting key value violates exclusion constraint "rig_exclusive"
+PASS  A1 agent moves BRAKE campaign to RIG-B (rig cannot run BRAKE) -> REJECTED R1 rig_booking_rig_id_test_type_id_fkey
+-------------
 
-PASS  A3 agent assigns unqualified crew CRW-2 to the metro design -> rejected: insert or update on table "crew_assignment" violates foreign key constraint "crew_assignment_crew_id_design_id
+PASS  A2 agent double-books RIG-B (overlaps C-102-EMC) -> REJECTED R1 rig_exclusive
+-------------
 
-PASS  A4 agent schedules crew outside the customer access window -> rejected: new row for relation "crew_assignment" violates check constraint "inside_access_window"
+PASS  A2b agent tries RIG-B again a week later (still overlaps) -> REJECTED R1 rig_exclusive
+-------------
 
-PASS  A5 agent books same crew in next window without travel time overlap -> rejected: conflicting key value violates exclusion constraint "crew_exclusive"
+PASS  A3 agent assigns unqualified crew CRW-2 to the metro design -> REJECTED R2 crew_assignment_crew_id_design_id_qual_period_fkey
+-------------
 
-PASS  A6 agent parks a third batch on an occupied hall position -> rejected: conflicting key value violates exclusion constraint "hall_position_exclusive"
+PASS  A4 agent schedules crew outside the customer access window -> REJECTED R3 inside_access_window
+-------------
+
+PASS  A5 agent books same crew again before travel time is over -> REJECTED R3 crew_exclusive
+-------------
+
+PASS  A6 agent parks a third batch on an occupied hall position -> REJECTED R4 hall_position_exclusive
+-------------
 
 PASS  A7 agent writes the committed plan directly -> rejected: new row violates row-level security policy for table "rig_booking"
 
@@ -38,6 +49,10 @@ PASS  A8 agent moves a contractual milestone date -> rejected: permission denied
 PASS  A9 agent tries to commit its own proposal -> rejected: permission denied for function commit_scenario
 
 Agent writes a feasible proposal: EMC to RIG-B after C-102-EMC, BRAKE to RIG-C.
+ bk1 | bk2 
+-----+-----
+ OK  | OK
+
 
 Proposal impact vs committed plan:
    scenario_id    | net_exposure_eur | penalty_delta_eur | milestones_newly_late | unscheduled_campaigns 
@@ -47,9 +62,14 @@ Proposal impact vs committed plan:
 (2 rows)
 
 ==== 4. Planner reviews, overrides, commits ====
-PASS  P1 planner override is held to the same rules (overlap on RIG-B) -> rejected: conflicting key value violates exclusion constraint "rig_exclusive"
+PASS  P1 planner override is held to the same rules (overlap on RIG-B) -> REJECTED R1 rig_exclusive
+-------------
 
 Planner override: C-102-EMC on RIG-B pulled forward 1 Mar (its rig is free), C-101-EMC follows 1 May.
+ bk3 | bk1 
+-----+-----
+ OK  | OK
+
  booking_key | campaign_id | rig_id |                       period                        | last_modified_by 
 -------------+-------------+--------+-----------------------------------------------------+------------------
  BK-1        | C-101-EMC   | RIG-B  | ["2027-05-01 00:00:00+00","2027-07-28 00:00:00+00") | planner_ana
@@ -61,12 +81,13 @@ Planner override: C-102-EMC on RIG-B pulled forward 1 Mar (its rig is free), C-1
 ------------------+-------------------+-----------------------
  agent_proposal-1 |        1400000.00 |                     1
 
-PASS  P2 planner commits a plan that still costs penalties, without a director -> rejected: G5: penalty delta EUR 1400000.00 and 1 newly late milestone(s) need programme director approval
-
-
- new_version 
+PASS  P2 planner commits a plan that still costs penalties, without a director -> REJECTED R5 G5
 -------------
-           2
+
+
+    result    
+--------------
+ COMMITTED v2
 
 ==== 5. After commit ====
  version | committed_by | source_scenario_id | penalty_delta_eur |                  comment                   
@@ -80,8 +101,43 @@ Conflicts left on the committed plan (expect none):
 --------------------
                   0
 
-PASS  P3 stale what-if built on v1 cannot overwrite v2 -> rejected: G2: scenario what_if-2 was built on plan v1 but plan is now v2; re-branch
+PASS  P3 stale what-if built on v1 cannot overwrite v2 -> REJECTED GATE G2
+-------------
 
-PASS  P4 feasible-on-paper plan that books a rig during a known outage -> rejected: G4: scenario what_if-3 conflicts with known outages or revoked windows
+ bk2 
+-----
+ OK
 
+PASS  P4 feasible-on-paper plan that books a rig during a known outage -> REJECTED GATE G4
+-------------
+
+==== 6. Rejections are kept: audit, agent feedback, demand signal ====
+    actor     | stage  | rule_code |                    enforced_by                     |   resource_id    | item_key 
+--------------+--------+-----------+----------------------------------------------------+------------------+----------
+ agent_svc    | DRAFT  | R1        | rig_booking_rig_id_test_type_id_fkey               | RIG-B            | BK-2
+ agent_svc    | DRAFT  | R1        | rig_exclusive                                      | RIG-B            | BK-1
+ agent_svc    | DRAFT  | R1        | rig_exclusive                                      | RIG-B            | BK-1
+ agent_svc    | DRAFT  | R2        | crew_assignment_crew_id_design_id_qual_period_fkey | CRW-2            | CA-1
+ agent_svc    | DRAFT  | R3        | inside_access_window                               | CRW-1            | CA-1
+ agent_svc    | DRAFT  | R3        | crew_exclusive                                     | CRW-1            | CA-2
+ agent_svc    | DRAFT  | R4        | hall_position_exclusive                            | H1-P1            | HO-3
+ planner_ana  | DRAFT  | R1        | rig_exclusive                                      | RIG-B            | BK-1
+ planner_ana  | COMMIT | R5        | G5                                                 | agent_proposal-1 | 
+ planner_joao | COMMIT | GATE      | G2                                                 | what_if-2        | 
+ planner_joao | COMMIT | GATE      | G4                                                 | what_if-3        | 
+(11 rows)
+
+Pressure on scarce resources (the case for renting capacity):
+ rule_code |   resource_id    | rejections |                     refused_by                      
+-----------+------------------+------------+-----------------------------------------------------
+ R1        | RIG-B            |          4 | rig_booking_rig_id_test_type_id_fkey, rig_exclusive
+ R3        | CRW-1            |          2 | crew_exclusive, inside_access_window
+ R2        | CRW-2            |          1 | crew_assignment_crew_id_design_id_qual_period_fkey
+ R4        | H1-P1            |          1 | hall_position_exclusive
+ R5        | agent_proposal-1 |          1 | G5
+ GATE      | what_if-2        |          1 | G2
+ GATE      | what_if-3        |          1 | G4
+(7 rows)
+
+PASS  L1 every refusal logged with its rule; RIG-B is the most refused resource (4 x R1)
 Done.
