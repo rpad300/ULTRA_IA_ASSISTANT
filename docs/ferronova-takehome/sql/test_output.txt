@@ -1,0 +1,87 @@
+
+==== 0. Baseline is feasible and on time ====
+ scenario_id | net_exposure_eur | unscheduled_campaigns 
+-------------+------------------+-----------------------
+ BASELINE    |             0.00 |                     0
+
+==== 1. Hard rules hold even on the committed plan ====
+PASS  B1 owner moves C-102-EMC onto RIG-A while C-101-EMC runs there -> rejected: conflicting key value violates exclusion constraint "rig_exclusive"
+
+PASS  B2 owner books the same campaign twice in one plan -> rejected: duplicate key value violates unique constraint "rig_booking_scenario_id_campaign_id_key"
+
+==== 2. Event: RIG-A down 1 Mar to 15 May 2027 ====
+Conflicts now visible on the committed plan (this is what wakes the agent):
+ scenario_id | conflict_type | item_key | resource_id |                       period                        
+-------------+---------------+----------+-------------+-----------------------------------------------------
+ BASELINE    | RIG_OUTAGE    | BK-2     | RIG-A       | ["2027-05-01 00:00:00+00","2027-08-01 00:00:00+00")
+ BASELINE    | RIG_OUTAGE    | BK-1     | RIG-A       | ["2027-02-01 00:00:00+00","2027-04-30 00:00:00+00")
+(2 rows)
+
+==== 3. Agent works in its own sandbox ====
+agent scenario = agent_proposal-1
+PASS  A1 agent moves BRAKE campaign to RIG-B (rig cannot run BRAKE) -> rejected: insert or update on table "rig_booking" violates foreign key constraint "rig_booking_rig_id_test_type_id_fkey"
+
+PASS  A2 agent double-books RIG-B (overlaps C-102-EMC) -> rejected: conflicting key value violates exclusion constraint "rig_exclusive"
+
+PASS  A3 agent assigns unqualified crew CRW-2 to the metro design -> rejected: insert or update on table "crew_assignment" violates foreign key constraint "crew_assignment_crew_id_design_id
+
+PASS  A4 agent schedules crew outside the customer access window -> rejected: new row for relation "crew_assignment" violates check constraint "inside_access_window"
+
+PASS  A5 agent books same crew in next window without travel time overlap -> rejected: conflicting key value violates exclusion constraint "crew_exclusive"
+
+PASS  A6 agent parks a third batch on an occupied hall position -> rejected: conflicting key value violates exclusion constraint "hall_position_exclusive"
+
+PASS  A7 agent writes the committed plan directly -> rejected: new row violates row-level security policy for table "rig_booking"
+
+PASS  A8 agent moves a contractual milestone date -> rejected: permission denied for table milestone
+
+PASS  A9 agent tries to commit its own proposal -> rejected: permission denied for function commit_scenario
+
+Agent writes a feasible proposal: EMC to RIG-B after C-102-EMC, BRAKE to RIG-C.
+
+Proposal impact vs committed plan:
+   scenario_id    | net_exposure_eur | penalty_delta_eur | milestones_newly_late | unscheduled_campaigns 
+------------------+------------------+-------------------+-----------------------+-----------------------
+ BASELINE         |             0.00 |              0.00 |                     0 |                     0
+ agent_proposal-1 |       2950000.00 |        2950000.00 |                     1 |                     0
+(2 rows)
+
+==== 4. Planner reviews, overrides, commits ====
+PASS  P1 planner override is held to the same rules (overlap on RIG-B) -> rejected: conflicting key value violates exclusion constraint "rig_exclusive"
+
+Planner override: C-102-EMC on RIG-B pulled forward 1 Mar (its rig is free), C-101-EMC follows 1 May.
+ booking_key | campaign_id | rig_id |                       period                        | last_modified_by 
+-------------+-------------+--------+-----------------------------------------------------+------------------
+ BK-1        | C-101-EMC   | RIG-B  | ["2027-05-01 00:00:00+00","2027-07-28 00:00:00+00") | planner_ana
+ BK-2        | C-102-BRK   | RIG-C  | ["2027-05-01 00:00:00+00","2027-08-01 00:00:00+00") | agent_svc
+ BK-3        | C-102-EMC   | RIG-B  | ["2027-03-01 00:00:00+00","2027-04-30 00:00:00+00") | planner_ana
+(3 rows)
+
+   scenario_id    | penalty_delta_eur | milestones_newly_late 
+------------------+-------------------+-----------------------
+ agent_proposal-1 |        1400000.00 |                     1
+
+PASS  P2 planner commits a plan that still costs penalties, without a director -> rejected: G5: penalty delta EUR 1400000.00 and 1 newly late milestone(s) need programme director approval
+
+
+ new_version 
+-------------
+           2
+
+==== 5. After commit ====
+ version | committed_by | source_scenario_id | penalty_delta_eur |                  comment                   
+---------+--------------+--------------------+-------------------+--------------------------------------------
+       1 | sync         |                    |                   | Initial load
+       2 | planner_ana  | agent_proposal-1   |        1400000.00 | RIG-A outage re-plan, approved by director
+(2 rows)
+
+Conflicts left on the committed plan (expect none):
+ baseline_conflicts 
+--------------------
+                  0
+
+PASS  P3 stale what-if built on v1 cannot overwrite v2 -> rejected: G2: scenario what_if-2 was built on plan v1 but plan is now v2; re-branch
+
+PASS  P4 feasible-on-paper plan that books a rig during a known outage -> rejected: G4: scenario what_if-3 conflicts with known outages or revoked windows
+
+Done.
